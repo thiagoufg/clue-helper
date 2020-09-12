@@ -1,0 +1,2830 @@
+<script>
+
+//hack to copy arrays by value (not by reference)
+Object.prototype.clone = function() {
+	  var newObj = (this instanceof Array) ? [] : {};
+	  for (i in this) {
+	    if (i == 'clone') continue;
+	    if (this[i] && typeof this[i] == "object") {
+	      newObj[i] = this[i].clone();
+	    } else newObj[i] = this[i]
+	  } return newObj;
+	};
+
+
+	
+var backups = new Array(100);
+var proximoSequencialBackup=0;
+var proximoSlotBackup=0;//antes havia apenas 5 slots, mas agora sao 100
+
+var tiposItens = new Array(3);
+tiposItens[0]="comodo";
+tiposItens[1]="arma";
+tiposItens[2]="suspeito";
+
+//VARIAVEIS QUE MUDAM COM O TIPO DE JOGO
+var tipoJogo=1;
+var maxNumJogadores=8;
+var suspeitos;
+var comodos;
+var armas;
+//FIM DAS VARIAVEIS QUE MUDAM COM O TIPO DE JOGO
+
+var jogadores = new Array();
+var acusacao_comodo;
+var acusacao_arma;
+var acusacao_suspeito;
+
+//tabela principal, de backup e de insercao manual
+var tabela_comodos;
+var tabela_armas;
+var tabela_suspeitos;
+var tabela_comodos_insercao_manual;
+var tabela_armas_insercao_manual;
+var tabela_suspeitos_insercao_manual;
+
+//palpites dados
+var palpites;
+var palpiteAtual;
+
+//sugestoes de palpites
+var sugestoesPalpite = new Array(1000);
+var qtSugestoes=0;
+
+var rodada=0;
+var abaAtual='palpites';
+var ordenacaoAtual='rodada'; //pode ser rodada, origem, destino, comodo, arma, suspeito
+var inteligente=true;
+
+//constantes
+var indexAlguemTem;
+var indexSugestaoPalpiteAtual=0;
+var indexQuemPalpitou=0;
+var indexQuemMostrou=1;
+
+function mostrar(txt)
+{
+	document.getElementById('tela').innerHTML=txt;
+}
+
+function menu(txt)
+{
+	document.getElementById('menu').innerHTML=txt;
+}
+
+function telaInicial()
+{
+	mostrar("<table border=0><tr><td><input type='button' onclick='setTipoJogo(1);' value='TABULEIRO DO THIAGO'></tr></td><tr><td><input type='button' onclick='setTipoJogo(2);' value='TABULEIRO DO JOEL'></tr></td><tr><td><input type=\"button\" onclick='restoreFromCookies();' value='CONTINUAR'></tr></td></table>");
+	menu("<center>DETETIVE</center>");
+	
+    
+    
+}
+
+function setTipoJogo(tipo)
+{
+	if(tipo==1)
+	{
+		tipoJogo=1;
+		maxNumJogadores=8;
+
+		suspeitos = new Array(8);
+		suspeitos[0] = "Adv Marinh";
+		suspeitos[1] = "Chefe Tony";
+		suspeitos[2] = "Covei Serg";
+		suspeitos[3] = "Dancar Rosa";
+		suspeitos[4] = "Flor Branca";
+		suspeitos[5] = "Medi Viole";
+		suspeitos[6] = "Mord James";
+		suspeitos[7] = "Sarg Bigod";
+
+		comodos = new Array(11);
+		comodos[0] = "Banco";
+		comodos[1] = "Boate";
+		comodos[2] = "Cemiterio";
+		comodos[3] = "Estacao Trem";
+		comodos[4] = "Floricultura";
+		comodos[5] = "Hospital";
+		comodos[6] = "Hotel";
+		comodos[7] = "Mansao";
+		comodos[8] = "Praca";
+		comodos[9] = "Prefeitura";
+		comodos[10] = "Restaurante";
+
+		armas = new Array(8);
+		armas[0] = "Arma Quimica";
+		armas[1] = "Espingarda";
+		armas[2] = "Faca";
+		armas[3] = "Pe de cabra";
+		armas[4] = "Pa";
+		armas[5] = "Soco ingles";
+		armas[6] = "Tesoura";
+		armas[7] = "Veneno";
+	}
+	
+	if(tipo==2)
+	{
+		tipoJogo=2;
+		maxNumJogadores=6;
+
+		suspeitos = new Array(6);
+		suspeitos[0] = "Black";
+		suspeitos[1] = "Branca";
+		suspeitos[2] = "Marinho";
+		suspeitos[3] = "Mostarda";
+		suspeitos[4] = "Rosa";
+		suspeitos[5] = "Violeta";
+
+		comodos = new Array(9);
+		comodos[0] = "Biblioteca";
+		comodos[1] = "Cozinha";
+		comodos[2] = "Escritorio";
+		comodos[3] = "Estar";
+		comodos[4] = "Festa";
+		comodos[5] = "Hall";
+		comodos[6] = "Jantar";
+		comodos[7] = "Jogos";
+		comodos[8] = "Musica";
+
+		armas = new Array(6);
+		armas[0] = "Cano";
+		armas[1] = "Castical";
+		armas[2] = "Chave Inglesa";
+		armas[3] = "Corda";
+		armas[4] = "Punhal";
+		armas[5] = "Revolver";
+		
+	}
+	
+	tipoJogo=tipo;
+	telaNomesJogadores();
+}
+
+function telaNomesJogadores()
+{
+	if(tipoJogo==undefined)
+	{
+		telaInicial();
+		return;
+	}
+	var entradaJogadores="<table><tr><td>Jogadores no sentido horario.</td></tr>";
+	entradaJogadores+="<tr><td><input type=\"text\" maxlength=2 size=3 id=\"jogador0\" value='Eu' disabled/></td></tr>";
+	var i=1;
+	for(i=1;i<maxNumJogadores;i++)
+	{
+		entradaJogadores+="<tr><td><input type=\"text\" maxlength=2 size=3 id=\"jogador"+i+"\" onkeyup=\"handleEnter(this,"+i+", event)\" /></td></tr>";
+	}
+	entradaJogadores+="<tr><td><input type=\"button\" value=\"ok\" id='jogador"+maxNumJogadores+"' onclick=\"iniciarJogo();\"></td></tr></table>";
+	mostrar(entradaJogadores);
+	menu("<center>DETETIVE</center>");
+	document.getElementById('jogador1').focus();
+}
+
+function handleEnter(field,numFieldJogador, e) 
+{
+    var charCode;
+    
+    if(e && e.which){
+        charCode = e.which;
+    }else if(window.event){
+        e = window.event;
+        charCode = e.keyCode;
+    }
+
+    if(charCode == 13 || field.value.length==2) {
+        document.getElementById('jogador'+(numFieldJogador+1)).focus();
+    }
+}
+
+function iniciarJogo()
+{
+	var numJogadores=0;
+	acusacao_comodo=undefined;
+	acusacao_arma=undefined;
+	acusacao_suspeito=undefined;
+	for(i=0;i<maxNumJogadores;i++)
+	{
+		var nome = document.getElementById('jogador'+i).value;
+		if(nome.length>0)numJogadores++;
+	}
+	if(numJogadores>=3)
+	{
+		jogadores = new Array(numJogadores);
+		indexAlguemTem = jogadores.length;
+		for(i=0;i<numJogadores;i++)
+		{
+			jogadores[i]=document.getElementById('jogador'+i).value;
+		}
+		
+		rodada=0;
+		palpites = new Array(1000);
+		palpiteAtual = new Array(6);
+	
+		iniciaTabela();
+		telaJogo();
+		alert('Marque quais cartas voce tem primeiro!');
+	}	
+	else
+		alert('Sao necessarios no minimo 3 jogadores');
+	rodada=0;
+	
+	backupEstado();
+	
+}
+
+function iniciaTabela()
+{	
+	
+	if(tabela_comodos_insercao_manual==undefined || tabela_armas_insercao_manual==undefined || tabela_suspeitos_insercao_manual==undefined)
+	{
+		tabela_comodos = new Array(comodos.length);
+		tabela_armas = new Array(armas.length);
+		tabela_suspeitos = new Array(suspeitos.length);
+		
+		for(i=0;i<tabela_armas.length;i++)
+		{
+			tabela_armas[i]=new Array(jogadores.length+1); //para cada jogador "",S ou N... ultimo "jogador" é o jogador "alguemTem"
+			for(j=0;j<=indexAlguemTem;j++)
+			{
+				tabela_armas[i][j]=(j==0?"N":"");
+			}
+		}
+		for(i=0;i<tabela_comodos.length;i++)
+		{
+			tabela_comodos[i]=new Array(jogadores.length+1); //para cada jogador "",S ou N... ultimo "jogador" é o jogador "alguemTem"
+			for(j=0;j<=indexAlguemTem;j++)
+			{
+				tabela_comodos[i][j]=(j==0?"N":"");
+			}
+		}
+		for(i=0;i<tabela_suspeitos.length;i++)
+		{
+			tabela_suspeitos[i]=new Array(jogadores.length+1); //para cada jogador "",S ou N... ultimo "jogador" é o jogador "alguemTem"
+			for(j=0;j<=indexAlguemTem;j++)
+			{
+				tabela_suspeitos[i][j]=(j==0?"N":"");
+			}
+		}
+		
+		//inicia tabela de valores entrados manualmente na tabela
+		tabela_comodos_insercao_manual=tabela_comodos.clone();
+		tabela_armas_insercao_manual=tabela_armas.clone();
+		tabela_suspeitos_insercao_manual=tabela_suspeitos.clone();
+	}else
+	{
+		//restaura tabela com valores da insercao manual
+		tabela_comodos=tabela_comodos_insercao_manual.clone();
+		tabela_armas=tabela_armas_insercao_manual.clone();
+		tabela_suspeitos=tabela_suspeitos_insercao_manual.clone();
+	}
+	
+	//TODO criar variavel global tabelas = new Array(3) e adicionar cada tabela a ela.
+	//MAS ATENCAO: verifique se metodos ja nao usam variavel local chamada tabelas.
+}
+
+function telaJogo()
+{
+	mostraMenu();
+	abaTabela();
+}
+
+function mostraMenu()
+{
+	//botao ctrl-z
+	var botaoDesfazer="<input type='button' value='&nbsp;&nbsp;<&nbsp;&nbsp;' onclick=\"voltarBackup();\">";
+	var botaoRefazer="<input type='button' value='&nbsp;&nbsp;>&nbsp;&nbsp;' onclick=\"avancarBackup();\">";
+	
+	//botao abaTabela
+	var corBotaoTabela=abaAtual=="tabela"?"style='background-color:#ff0000;'":"";
+	var botaoAbaTabela="<input type='button' "+corBotaoTabela+" value='Tabela' onclick=\"abaTabela()\">";
+	
+	//botao abaPalpites
+	var corBotaoPalpites=abaAtual=="palpites"?"style='background-color:#ff0000;'":"";
+	var botaoAbaPalpites="<input type='button' "+corBotaoPalpites+" value='Palpitar' onclick=\"abaPalpites()\">";
+	
+	//botao abaDetalhes
+	var corBotaoDetalhes=abaAtual=="detalhes"?"style='background-color:#ff0000;'":"";
+	var botaoAbaDetalhes="<input type='button' "+corBotaoDetalhes+" value='Detalhes' onclick=\"abaDetalhes()\">";
+	
+	//botao acusacao
+	var botaoAcusacao="";
+	if(acusacao_comodo!=undefined && acusacao_arma!=undefined && acusacao_suspeito!=undefined)
+	{
+		var mensagem="Acuse: "+comodos[acusacao_comodo]+", "+armas[acusacao_arma]+", "+suspeitos[acusacao_suspeito];
+		botaoAcusacao="<input type='button' id='botaoAcusacao' style='background-color:#00ff00;' value='!!!' onclick=\"alert('"+mensagem+"');\">";
+	}
+	
+	menu(botaoAbaTabela+botaoAbaPalpites+botaoAbaDetalhes+botaoAcusacao+botaoDesfazer+botaoRefazer);
+}
+
+function abaDetalhes()
+{
+	abaAtual="detalhes";
+	mostraMenu();
+	
+	var saida="";
+	
+	saida+="<table border=1 cellspacing=0 cellpadding=0>";
+	
+	//botao inferir
+	var corBotaoInferir=inteligente?"style='background-color:#ff0000;'":"";
+	var botaoInferir="<input type='button' "+corBotaoInferir+" value='Esperto' onclick=\"if(true){inteligente=!inteligente;if(inteligente){inferir();backupEstado();}refreshDisplay();}\">";
+	
+	//botao resetTable
+	var botaoResetTable="<input type='button' value='Reset' onclick=\"iniciaTabela();inferir();backupEstado();refreshDisplay();\">";
+	
+	saida+="<tr>";
+		saida+="<td colspan=7>"+botaoInferir+botaoResetTable+"</td>"; //aaaa 
+	saida+="</tr>";
+	
+	//botao ordenar
+	var corBotaoOrdenar1=ordenacaoAtual=="rodada"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar1="<input type='button' "+corBotaoOrdenar1+" value='#' onclick=\"ordenacaoAtual='rodada';refreshDisplay()\">";
+	
+	//botao ordenar
+	var corBotaoOrdenar2=ordenacaoAtual=="origem"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar2="<input type='button' "+corBotaoOrdenar2+" value='De' onclick=\"ordenacaoAtual='origem';refreshDisplay()\">";
+	
+	//botao ordenar
+	var corBotaoOrdenar3=ordenacaoAtual=="destino"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar3="<input type='button' "+corBotaoOrdenar3+" value='P/' onclick=\"ordenacaoAtual='destino';refreshDisplay()\">";
+	
+	//botao ordenar - lugar
+	var corBotaoOrdenar5=ordenacaoAtual=="comodo"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar5="<input type='button' "+corBotaoOrdenar5+" value='Lug' onclick=\"ordenacaoAtual='comodo';refreshDisplay()\">";
+	
+	//botao ordenar - arma
+	var corBotaoOrdenar6=ordenacaoAtual=="arma"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar6="<input type='button' "+corBotaoOrdenar6+" value='Arm' onclick=\"ordenacaoAtual='arma';refreshDisplay()\">";
+	
+	//botao ordenar - suspeito
+	var corBotaoOrdenar7=ordenacaoAtual=="suspeito"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar7="<input type='button' "+corBotaoOrdenar7+" value='Sus' onclick=\"ordenacaoAtual='suspeito';refreshDisplay()\">";
+	
+	//botao ordenar
+	var corBotaoOrdenar4=ordenacaoAtual=="similaridade"?"style='background-color:#ff0000;'":"";
+	var botaoOrdenar4="<input type='button' "+corBotaoOrdenar4+" value='=' onclick=\"ordenacaoAtual='similaridade';refreshDisplay()\">";
+	
+	saida+="<tr>";
+		saida+="<td colspan=7>"+botaoOrdenar1+botaoOrdenar2+botaoOrdenar5+botaoOrdenar6+botaoOrdenar7+botaoOrdenar3+botaoOrdenar4+"</td>"; //aaaa 
+	saida+="</tr>";
+	
+	var i=0;
+	var palpitesOrdenados = new Array(rodada);
+	for(i=0;i<rodada;i++)
+	{
+		if(palpites[i]!=undefined)
+			palpitesOrdenados[i]=palpites[i].clone();
+	}
+	
+	if(ordenacaoAtual=='origem')
+	{
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 100000000*(a[0]+1)+1000000*(a[2]+1)+10000*(a[3]+1)+100*(a[4]+1);
+						var y = 100000000*(b[0]+1)+1000000*(b[2]+1)+10000*(b[3]+1)+100*(b[4]+1);
+						return y-x;
+					}
+				);
+	}
+	
+	if(ordenacaoAtual=='destino')
+	{
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 100000000*(a[1]+1)+1000000*(a[2]+1)+10000*(a[3]+1)+100*(a[4]+1);
+						var y = 100000000*(b[1]+1)+1000000*(b[2]+1)+10000*(b[3]+1)+100*(b[4]+1);
+						return y-x;
+					}
+				);
+	}
+	
+	if(ordenacaoAtual=='comodo')
+	{
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 1000000*(a[2]+1)+10000*(a[3]+1)+100*(a[4]+1);
+						var y = 1000000*(b[2]+1)+10000*(b[3]+1)+100*(b[4]+1);
+						return y-x;
+					}
+				);
+	}
+	
+	if(ordenacaoAtual=='arma')
+	{
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 1000000*(a[3]+1)+10000*(a[2]+1)+100*(a[4]+1);
+						var y = 1000000*(b[3]+1)+10000*(b[2]+1)+100*(b[4]+1);
+						return y-x;
+					}
+				);
+	}
+	
+	if(ordenacaoAtual=='suspeito')
+	{
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 1000000*(a[4]+1)+10000*(a[2]+1)+100*(a[3]+1);
+						var y = 1000000*(b[4]+1)+10000*(b[2]+1)+100*(b[3]+1);
+						return y-x;
+					}
+				);
+	}
+	
+	if(ordenacaoAtual=='similaridade')
+	{
+		
+		/*
+		palpitesOrdenados.sort(	function(a, b)
+					{
+						var x = 100000000*(a[2]+1)+1000000*(a[3]+1)+10000*(a[4]+1)+100*(a[1]+1);
+						var y = 100000000*(b[2]+1)+1000000*(b[3]+1)+10000*(b[4]+1)+100*(b[1]+1);
+						return y-x;
+					}
+				);
+		*/
+		var j=0;
+		var duplasETrincas=inferirDuvidaNCartasNPessoas();
+		palpitesOrdenados = new Array(duplasETrincas.length*4);
+		if(duplasETrincas!=null)
+		{
+			var g=0;
+			for(g=0;g<duplasETrincas.length;g++)
+			{
+				if(duplasETrincas[g]!=undefined)
+				{
+					palpitesOrdenados[j++]=duplasETrincas[g][0];
+					palpitesOrdenados[j++]=duplasETrincas[g][1];
+					if(duplasETrincas[g][2]!==undefined)
+					{
+						palpitesOrdenados[j++]=duplasETrincas[g][2];
+					}
+					
+				}
+				//palpitesOrdenados[j]=undefined;
+			}
+		}
+	}
+	var cores = new Array(2);
+	cores[0]='fff';
+	cores[1]='eee';
+	var cor=0;
+	for (i=0;i<rodada;i++)
+	{
+		var p=palpitesOrdenados[i];
+		if(p!=undefined)
+		{
+			var indice = cor++ % cores.length;
+			saida+="<tr style='background-color:#"+cores[indice]+"'>";
+
+			saida+="<td>";
+			saida+=i;
+			saida+="</td>";
+			
+			saida+="<td>";
+			saida+=jogadores[p[0]];
+			saida+="</td>";
+			
+			var cor_td;
+
+			cor_td=(p[0]==0 && tabela_comodos_insercao_manual[p[2]][p[1]]=='S'?"style='background-color:#ccc;'":"");
+			saida+="<td "+cor_td+">";
+			saida+=comodos[p[2]].substr(0,9)+quemTem('comodo',p[2]);
+			saida+="</td>";
+			
+			cor_td=(p[0]==0 && tabela_armas_insercao_manual[p[3]][p[1]]=='S'?"style='background-color:#ccc;'":"");
+			saida+="<td "+cor_td+">";
+			saida+=armas[p[3]].substr(0,9)+quemTem('arma',p[3]);
+			saida+="</td>";
+			
+			cor_td=(p[0]==0 && tabela_suspeitos_insercao_manual[p[4]][p[1]]=='S'?"style='background-color:#ccc;'":"");
+			saida+="<td "+cor_td+">";
+			saida+=suspeitos[p[4]].substr(0,9)+quemTem('suspeito',p[4]);
+			saida+="</td>";
+			
+			saida+="<td>";
+			saida+=jogadores[p[1]];
+			saida+="</td>";
+				
+			saida+="<td>";
+			saida+="<input type='button' value='X' onclick='apagarPalpite(\""+JSON.stringify(p)+"\")'/>";
+			saida+="</td>";
+			
+			saida+="</tr>";
+		}
+	}
+	saida+="</table>";
+	
+	mostrar(saida);
+}
+
+function apagarPalpite(palpite)
+{
+	palpite=JSON.parse(palpite);
+	var r;
+	var indice;
+	for (r=0;r<rodada;r++)
+	{
+		if(
+			palpites[r][0]===palpite[0]
+			&& palpites[r][1]===palpite[1]
+			&& palpites[r][2]===palpite[2]
+			&& palpites[r][3]===palpite[3]
+			&& palpites[r][4]===palpite[4]
+		)
+		{
+			indice=r;
+		}
+	}
+	if(indice!==undefined)
+	{
+		palpites[indice]=undefined;
+		var i;
+		for (i=indice;i<(rodada-1);i++)
+		{
+			palpites[i]=palpites[i+1];
+		}
+		rodada--;
+		iniciaTabela();
+		inferir();
+		abaDetalhes();
+		backupEstado();
+	}
+}
+
+function abaPalpites()
+{
+	abaAtual="palpites";
+	mostraMenu();
+	
+	//botoes selecionaSugestaoPalpite
+	var botoesSelecionaSugestaoPalpite="";
+	if(inteligente && !(indexSugestaoPalpiteAtual==undefined || qtSugestoes==0))
+	{
+		botoesSelecionaSugestaoPalpite="<input type='button' value='<' onclick=\"selecionarSugestao(indexSugestaoPalpiteAtual-1)\">"+((indexSugestaoPalpiteAtual==undefined || qtSugestoes==0)?"0/0":((indexSugestaoPalpiteAtual+1)+"/"+qtSugestoes))+"<input type='button' value='>' onclick=\"selecionarSugestao(indexSugestaoPalpiteAtual+1)\">";
+		botoesSelecionaSugestaoPalpite="<tr style='background-color:#ff9900; text-color: #fff'><td colspan=3>"+botoesSelecionaSugestaoPalpite+"</td></tr>";
+	}
+	
+	
+	var saida="<table cellspacing=0 cellpadding=0>";
+	
+	//origem
+	saida+="<tr><td colspan=3 style='background-color:#dddddd;'>";
+	for(i=0;i<jogadores.length;i++)
+	{
+		var coluna_0_origem=("<input style='background-color:#"+(palpiteAtual[0]==i?'ff0000':'ffffff')+";' type='button' value='"+jogadores[i].substr(0,2)+"' onclick=\"selecionaOrigemPalpiteAtual("+i+");\">");
+		saida+=coluna_0_origem;
+	}
+	saida+="</td></tr>";
+	
+	//sugestao de palpite
+	saida+=botoesSelecionaSugestaoPalpite;
+	
+	//o palpite
+	//saida+="<tr style='background-color:#ff9900; text-color: #fff'><td colspan=3>Palpite:</td></tr>";
+	for(i=0;i<comodos.length;i++)
+	{
+		saida+="<tr style='background-color:#ffffff;'>";
+		var coluna_2_comodo='<td></td>';
+		if(comodos[i]!=undefined)
+		{
+			var cor_td='ffffff';
+			if(estaNoEnvelope(tabela_comodos,i))
+			{
+				cor_td='00ff00';
+			}else if(getSNInterrogacao(tabela_comodos, i)=='S')
+			{
+				cor_td='CCCCCC'
+			}
+			var cor_botao=(palpiteAtual[2]==i?'ff0000':'ffffff');
+			coluna_2_comodo=("<td width='33%' style='background-color:#"+cor_td+";'><input class='botao_palpite' style='background-color:#"+cor_botao+";' type='button' value='"+comodos[i].substr(0,9)+quemTem('comodo',i)+"' onclick=\"selecionaComodoPalpiteAtual("+i+");\"></td>");
+		}
+		
+		var coluna_3_arma='<td></td>';
+		if(armas[i]!=undefined)
+		{
+			var cor_td='ffffff';
+			if(estaNoEnvelope(tabela_armas,i))
+			{
+				cor_td='00ff00';
+			}else if(getSNInterrogacao(tabela_armas, i)=='S')
+			{
+				cor_td='CCCCCC'
+			}
+			var cor_botao=(palpiteAtual[3]==i?'ff0000':'ffffff');
+			coluna_3_arma=("<td width='33%' style='background-color:#"+cor_td+";'><input class='botao_palpite' style='background-color:#"+cor_botao+";' type='button' value='"+armas[i].substr(0,9)+quemTem('arma',i)+"' onclick=\"selecionaArmaPalpiteAtual("+i+");\"></td>");
+		}
+		
+		var coluna_4_suspeito='<td></td>';
+		if(suspeitos[i]!=undefined)
+		{
+			var cor_td='ffffff';
+			if(estaNoEnvelope(tabela_suspeitos,i))
+			{
+				cor_td='00ff00';
+			}else if(getSNInterrogacao(tabela_suspeitos, i)=='S')
+			{
+				cor_td='CCCCCC'
+			}
+			var cor_botao=(palpiteAtual[4]==i?'ff0000':'ffffff');
+			coluna_4_suspeito=("<td width='33%' style='background-color:#"+cor_td+";'><input class='botao_palpite' style='background-color:#"+cor_botao+";' type='button' value='"+suspeitos[i].substr(0,9)+quemTem('suspeito',i)+"' onclick=\"selecionaSuspeitoPalpiteAtual("+i+");\"></td>");
+		}
+
+		
+		saida+=coluna_2_comodo+coluna_3_arma+coluna_4_suspeito;
+		saida+="</tr>";
+	}
+	
+	//destino
+	//saida+="<tr style='background-color:#ff9900; text-color: #fff'><td colspan=3>Quem mostrou:</td></tr>";
+	saida+="<tr style='background-color:#dddddd;'><td colspan=3>";
+	for(i=0;i<jogadores.length;i++)
+	{
+		var coluna_1_destino=("<input style='background-color:#"+(palpiteAtual[1]==i?'ff0000':'ffffff')+";' type='button' value='"+jogadores[i].substr(0,2)+"' onclick=\"selecionaDestinoPalpiteAtual("+i+");\">");
+		saida+=coluna_1_destino;
+	}
+	saida+="</td></tr>";
+	
+	//gravar
+	//saida+="<tr style='background-color:#ff9900; text-color: #fff'><td colspan=3>Gravar:</td></tr>";
+	saida+="<tr><td colspan=3><input type='button' value='Gravar Palpite' onclick=\"gravarPalpiteAtual();\"></td></tr>";
+	
+	saida+="</table>";
+	mostrar(saida);
+}
+
+function gravarPalpiteAtual()
+{
+	var i;
+	for(i=0;i<(palpiteAtual.length-1);i++) //o ultmo index eh o offset do proprio palpite que indica qual carta eu mostrei pra outro jogador e pode ser undefined
+	{
+		if(palpiteAtual[i]==undefined)
+		{
+			alert('Preencha todos os campos do palpite.');
+			return;
+		}
+	}
+	palpites[rodada++]=palpiteAtual;
+	palpiteAtual = new Array(6);
+	inferir();
+	if(palpites[rodada-1][0]==0 && palpites[rodada-1][1]!=0)
+	{
+		abaTabela();
+		alert('Marque com um S, na tabela, a carta que o(a) jogador(a) '+jogadores[palpites[rodada-1][1]]+' te mostrou.');
+	}else
+	{
+		abaPalpites();
+	}
+	backupEstado();
+	
+}
+
+function inferir()
+{
+	var tabelas = new Array(3);
+	tabelas[0]=tabela_comodos.clone();
+	tabelas[1]=tabela_armas.clone();
+	tabelas[2]=tabela_suspeitos.clone();
+	var tabelasAntes=JSON.stringify(tabelas);
+	
+	inferirQuemNaoMostrou();
+	inferirConhecoDoisItensDoPalpiteMostrado();
+	inferirQuaseTodosNaoTemMasUmTem();
+	inferirAlguemTem();
+	inferirSegundoPalpiteSimilarNaoMostrado();
+	inferirQuatroPalpitesUmaIntercessao();
+	inferirDuvidaNCartasNPessoas();
+	
+	tabelas = new Array(3);
+	tabelas[0]=tabela_comodos.clone();
+	tabelas[1]=tabela_armas.clone();
+	tabelas[2]=tabela_suspeitos.clone();
+	var tabelasDepois=JSON.stringify(tabelas);
+	
+	if(tabelasAntes!=tabelasDepois)
+		inferir();
+	else
+	{
+		//condicao de parada da recursividade
+		verificaMelhorCartaPraMostrar();
+		verificaInconsistenciaTabela("comodo");
+		verificaInconsistenciaTabela("arma");
+		verificaInconsistenciaTabela("suspeito");
+		verificaAcusacao();
+	}
+}
+
+function inferirAlguemTem()
+{
+	var tabelas = new Array(3);
+	tabelas[0]=tabela_comodos;
+	tabelas[1]=tabela_armas;
+	tabelas[2]=tabela_suspeitos;
+	var t=0;
+	for(t=0;t<tabelas.length;t++)
+	{
+		var linha;
+		var tabelaTemCartaNoEnvelopeConhecida=false;
+		var linhaCartaNoEnvelope;
+		var tabela=tabelas[t];
+		for(linha=0;linha<tabela.length;linha++)
+		{
+			//se CartaX esta na mao de alguem especifico, 
+			//entao tabela[linha][indexAlguemTem]='S'
+			//e todos os outros nao tem.
+			var dono = getIdJogadorDono(tabela,linha);
+			if( dono!=="" && dono!==undefined )
+			{
+				tabela[linha][indexAlguemTem]='S';
+				var j;
+				for(j=0;j<jogadores.length;j++)
+				{
+					if(j!=dono)
+					{
+						tabela[linha][j]='N';
+					}
+				}
+			}
+			
+			//Se carta está no envelope, entao tabela[linha][indexAlguemTem]='N'
+			if(estaNoEnvelope(tabela,linha))
+			{
+				tabela[linha][indexAlguemTem]='N';
+				
+				//se tabela tem Carta X no Envelope, entao Outras Cartas da mesma tabela Alguem Tem (ultima posicao de cada linha das tabelas de S/N)
+				var linha2=0;
+				for(linha2=0;linha2<tabela.length;linha2++)
+				{
+					if(linha2!=linha )
+					{
+						tabela[linha2][indexAlguemTem]="S";
+					}
+				}
+			}
+			
+			if(isTodosOsOutrosEmMaos(tabela,linha) || tabela[linha][indexAlguemTem]=="N")
+			{
+				var linha2=0;
+				for(linha2=0;linha2<tabela.length;linha2++)
+				{
+					if(linha2!=linha)
+					{
+						tabela[linha2][indexAlguemTem]="S";
+					}
+				}
+			}
+		}
+	}
+}
+
+function inferirQuaseTodosNaoTemMasUmTem()
+{
+	var tabelas = new Array(3);
+	tabelas[0]=tabela_comodos;
+	tabelas[1]=tabela_armas;
+	tabelas[2]=tabela_suspeitos;
+	
+	var t;
+	for(t=0;t<tabelas.length;t++)
+	{
+		var linha;
+		var tabela=tabelas[t];
+		for(linha=0;linha<tabela.length;linha++)
+		{
+			if( getQuantidadeDeStatus(tabela,linha,'N')==(jogadores.length-1) && tabela[linha][indexAlguemTem]=='S' )
+			{
+				var j;
+				for(j=0;j<jogadores.length;j++)
+				{
+					if(tabela[linha][j]=='' || tabela[linha][j]==undefined)
+					{
+						tabela[linha][j]='S';
+					}
+				}
+			}
+		}
+	}
+}
+
+function inferirDuvidaNCartasNPessoas()
+{
+	var grupos=new Array(400);
+	var numGrupos=0;
+	var indexQuemPalpitou=0;
+	var indexQuemMostrou=1;
+	var indexAlguemTem=jogadores.length;
+	var i;
+	var j;
+	var k;
+	for(i=0;i<rodada;i++)
+	{
+		var palpite1 = palpites[i];
+		
+		for(j=i+1;j<rodada;j++)
+		{
+			
+			//duas cartas iguais de dois palpites mostrados por 2 pessoas, e se eu souber que nenhum dos jogadores tem as terceiras 
+			//cartas de cada palpite (iguais ou não), entao as outras duas alguemTem
+			var palpite2 = palpites[j];
+			
+			//var indexTabelaDiferente = getIndexDaUnicaCartaDiferente(palpite1,palpite2);
+			var indexNao = getIndexDaUnicaCartaConhecidaComNao(palpite1);
+			var outroIndex1=(indexNao-2+1)%3+2;
+			var outroIndex2=(indexNao-2+2)%3+2;
+			
+			if( indexNao!==undefined 
+				&& indexNao==getIndexDaUnicaCartaConhecidaComNao(palpite2)
+				&& palpite1[outroIndex1]==palpite2[outroIndex1]
+				&& palpite1[outroIndex2]==palpite2[outroIndex2]
+				&& palpite1[indexQuemMostrou]!=palpite2[indexQuemMostrou]
+				&& palpite1[indexQuemPalpitou]!=palpite1[indexQuemMostrou]
+				&& palpite2[indexQuemPalpitou]!=palpite2[indexQuemMostrou]
+			)
+			{
+				//marcar que jogador_incerto tem cada uma das 2 cartas iguais desses 2 palpites
+				//2-comodo,3-arma,4-suspeito
+				var dupla = new Array(2);
+				dupla[0]=palpite1;
+				dupla[1]=palpite2;
+				grupos[numGrupos++]=dupla;
+				
+				//getTabelaDoIndexDoPalpite(indexNao) ja era "N" pros dois jogadores
+				var outraTabela1 = getTabelaDoIndexDoPalpite(outroIndex1);
+				var outraTabela2 = getTabelaDoIndexDoPalpite(outroIndex2);
+				outraTabela1[palpite1[outroIndex1]][indexAlguemTem]="S";
+				outraTabela2[palpite1[outroIndex2]][indexAlguemTem]="S";
+				
+				if(outraTabela1[palpite1[outroIndex1]][palpite1[indexQuemMostrou]]=="S"
+					&& vazio(outraTabela2[palpite1[outroIndex2]][palpite1[indexQuemMostrou]])
+				)
+				{
+					outraTabela2[palpite2[outroIndex2]][palpite2[indexQuemMostrou]]="S";
+				}
+				
+				if(outraTabela2[palpite1[outroIndex2]][palpite1[indexQuemMostrou]]=="S"
+					&& vazio(outraTabela1[palpite1[outroIndex1]][palpite1[indexQuemMostrou]])
+				)
+				{
+					outraTabela2[palpite2[outroIndex1]][palpite2[indexQuemMostrou]]="S";
+				}
+			}
+				
+			for(k=j+1;k<rodada;k++)
+			{
+				
+				//mesmo palpite mostrado por 3 pessoas significa que as 3 cartas estao nas maos desses 3
+				var palpite3 = palpites[k];
+				
+				if(qtCartasIguais(palpite1,palpite2)==3 
+					&& qtCartasIguais(palpite2,palpite3)==3 
+					&& palpite1[indexQuemMostrou]!=palpite2[indexQuemMostrou]
+					&& palpite2[indexQuemMostrou]!=palpite3[indexQuemMostrou]
+					&& palpite1[indexQuemMostrou]!=palpite3[indexQuemMostrou]
+					&& palpite1[indexQuemPalpitou]!=palpite1[indexQuemMostrou]
+					&& palpite2[indexQuemPalpitou]!=palpite2[indexQuemMostrou]
+					&& palpite3[indexQuemPalpitou]!=palpite3[indexQuemMostrou]
+				)
+				{
+					var trinca = new Array(3);
+					trinca[0]=palpite1;
+					trinca[1]=palpite2;
+					trinca[2]=palpite3;
+					grupos[numGrupos++]=trinca;
+					//marcar que jogador_incerto tem cada uma das cartas desses palpites iguais
+					tabela_comodos[palpite1[2]][indexAlguemTem]='S';
+					tabela_armas[palpite1[3]][indexAlguemTem]='S';
+					tabela_suspeitos[palpite1[4]][indexAlguemTem]='S';
+				}
+			}
+		}
+	}
+	return grupos;
+}
+
+function inferirQuatroPalpitesUmaIntercessao()
+{
+	//4 palpites diferentes mostrados pelo mesmo jogador. Quarto palpite coincide em apenas 1 carta com um dos 3 anteriores indica que essa 1 carta é dele
+	//esta estrategia funcionaria somente se o jogador tivesse APENAS 3 cartas.
+	return;
+	var mudouTabela=false;
+	var p1;
+	var p2;
+	var p3;
+	var p4;
+	for(p1=0;p1<rodada;p1++)
+	{
+		for(p2=0;p2<rodada;p2++)
+		{
+			for(p3=0;p3<rodada;p3++)
+			{
+				for(p4=0;p4<rodada;p4++)
+				{
+					if(p1!=p2 && p1!=p3 && p1!=p4 && p2!=p3 && p2!=p4 && p3!=p4)
+					{
+						var palpite1=palpites[p1];
+						var palpite2=palpites[p2];
+						var palpite3=palpites[p3];
+						var palpite4=palpites[p4];
+						var idJogadorEu=0;
+						if(
+							palpite1[indexQuemMostrou]!=idJogadorEu
+							&& palpite2[indexQuemMostrou]!=idJogadorEu
+							&& palpite3[indexQuemMostrou]!=idJogadorEu
+							&& palpite4[indexQuemMostrou]!=idJogadorEu
+							&& palpite1[indexQuemMostrou]==palpite2[indexQuemMostrou]
+							&& palpite2[indexQuemMostrou]==palpite3[indexQuemMostrou]
+							&& palpite3[indexQuemMostrou]==palpite4[indexQuemMostrou]
+							&& qtCartasIguais(palpite1,palpite2)==0 
+							&& qtCartasIguais(palpite1,palpite3)==0 
+							&& qtCartasIguais(palpite2,palpite3)==0 
+							&& 
+							(
+								qtCartasIguais(palpite1,palpite4)==1 
+								|| qtCartasIguais(palpite2,palpite4)==1 
+								|| qtCartasIguais(palpite3,palpite4)==1
+							)
+						)
+						{
+							if(qtCartasIguais(palpite1,palpite4)==1)
+							{
+								mudouTabela=determinaCartaIgualTabelaSim(p1,p4);
+							}
+							if(qtCartasIguais(palpite2,palpite4)==1)
+							{
+								mudouTabela=determinaCartaIgualTabelaSim(p2,p4);
+							}
+							if(qtCartasIguais(palpite3,palpite4)==1)
+							{
+								mudouTabela=determinaCartaIgualTabelaSim(p3,p4);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return mudouTabela;
+}
+
+function determinaCartaIgualTabelaSim(p1,p2)
+{
+	var mudouTabela=false;
+	if(palpites[p1][2]==palpites[p2][2] && tabela_comodos[palpites[p1][2]][palpites[p1][1]]!='S') 
+	{
+		tabela_comodos[palpites[p1][2]][palpites[p1][1]]='S';
+		mudouTabela=true;
+	}
+	if(palpites[p1][3]==palpites[p2][3] && tabela_armas[palpites[p1][3]][palpites[p1][1]]!='S')  
+	{
+		tabela_armas[palpites[p1][3]][palpites[p1][1]]='S';
+		mudouTabela=true;
+	}
+	if(palpites[p1][4]==palpites[p2][4] && tabela_suspeitos[palpites[p1][4]][palpites[p1][1]]!='S')  
+	{
+		tabela_suspeitos[palpites[p1][4]][palpites[p1][1]]='S';
+		mudouTabela=true;
+	}
+	return mudouTabela;
+}
+
+function verificaMelhorCartaPraMostrar()
+{
+	//se o ultimo palpite foi mostrado por mim, sugira melhor carta pra mostrar
+	if(palpites[rodada-1]!=undefined && palpites[rodada-1][0]!=0 && palpites[rodada-1][1]==0) //se voce mesmo esta mostrando uma carta
+	{
+		var p;
+		var cartaMostrada;
+		var offsetCartaMostrada;
+		for(p=0;p<rodada-1;p++)
+		{
+			var palpite = palpites[p];
+			offsetCartaMostrada=palpite[5];
+			if(offsetCartaMostrada!=undefined && palpite[offsetCartaMostrada]==palpites[rodada-1][offsetCartaMostrada])
+			{
+				if(offsetCartaMostrada==2)
+				{
+					cartaMostrada=comodos[palpite[offsetCartaMostrada]];
+				}
+				if(offsetCartaMostrada==3)
+				{
+					cartaMostrada=armas[palpite[offsetCartaMostrada]];
+				}
+				if(offsetCartaMostrada==4)
+				{
+					cartaMostrada=suspeitos[palpite[offsetCartaMostrada]];
+				}
+				if(cartaMostrada!=undefined)
+				{
+					alert('Mostre a carta '+cartaMostrada);
+					palpites[rodada-1][5]=offsetCartaMostrada;
+					break;
+				}
+			}
+		}
+		
+		//so chega aqui se nao achar carta mostrada anteriormente pro mesmo jogador
+		if(cartaMostrada==undefined)
+		{
+			var jogadorEu=0;
+			
+			var indexComodo=2;
+			if(tabela_comodos[palpites[rodada-1][indexComodo]][jogadorEu]=='S')
+			{
+				offsetCartaMostrada=indexComodo;//mostre o comodo
+				palpites[rodada-1][5]=offsetCartaMostrada;
+				cartaMostrada=comodos[palpites[rodada-1][offsetCartaMostrada]];
+			}
+			else
+			{
+				var indexArma=3;
+				if(tabela_armas[palpites[rodada-1][indexArma]][jogadorEu]=='S')
+				{
+					offsetCartaMostrada=indexArma;//mostre a arma
+					palpites[rodada-1][5]=offsetCartaMostrada;
+					cartaMostrada=armas[palpites[rodada-1][offsetCartaMostrada]];
+				}
+				else
+				{
+					var indexSuspeito=2;
+					if(tabela_suspeitos[palpites[rodada-1][indexSuspeito]][jogadorEu]=='S')
+					{
+						offsetCartaMostrada=indexSuspeito;//mostre o suspeito	
+						palpites[rodada-1][5]=offsetCartaMostrada;
+						cartaMostrada=suspeitos[palpites[rodada-1][offsetCartaMostrada]];						
+					}
+				}
+			}
+			
+			if(cartaMostrada!=undefined)
+			{
+				alert('Mostre a carta '+cartaMostrada);
+				palpites[rodada-1][5]=offsetCartaMostrada;
+			}
+		}
+	}
+}
+
+function inferirQuemNaoMostrou()
+{
+	var r;
+	for(r=(rodada-1);r>=0;r--)
+	{
+		var palpite=palpites[r];
+		var primeiroASerAnalisado = (palpites[r][0]+1)%jogadores.length;
+		var ultimoASerAnalisado = palpites[r][1];
+		
+		var jogadorAnalisado;
+		for(jogadorAnalisado=primeiroASerAnalisado;jogadorAnalisado!=ultimoASerAnalisado;jogadorAnalisado=((jogadorAnalisado+1)%jogadores.length))
+		{
+			var tabelas = new Array(3);
+			tabelas[0]=tabela_comodos;
+			tabelas[1]=tabela_armas;
+			tabelas[2]=tabela_suspeitos;
+			
+			var n;
+			for(n=0;n<tabelas.length;n++)
+			{
+				var tabela = tabelas[n];
+				var indexPalpiteTabela=n+2;
+				if(tabela[palpite[indexPalpiteTabela]][jogadorAnalisado]!='S') //aaaa
+				{
+					tabela[palpite[indexPalpiteTabela]][jogadorAnalisado]='N';       
+				} else 
+				{ 
+					if(r==(rodada-1))
+						alert("Jogador desclassificado: \n\n"+jogadores[jogadorAnalisado].toUpperCase()+' tem carta '+getDescricaoCarta(tabela,palpite[indexPalpiteTabela])+' e nao mostrou quando jogador '+jogadores[palpite[0]].toUpperCase()+' fez palpite na ultima rodada.'); 
+					corrigirPalpite(r,jogadorAnalisado);
+				}
+			}
+		}
+		
+	}
+}
+
+function getDescricaoCarta(tabela,linha)
+{
+	if(tabela==tabela_comodos)
+		return comodos[linha];
+	if(tabela==tabela_armas)
+		return armas[linha];
+	if(tabela==tabela_suspeitos)
+		return suspeitos[linha];
+}
+
+function corrigirPalpite(numRodada,idJogadorCorreto)
+{
+	//corrige o palpite errado e insere um palpite novo
+	//se palpite errado era de A mostrado por C, porque B escondeu indevidamente uma carta
+	//entao palpite errado eh corrigido de A mostrado por B
+	//e um novo palpite de B mostrado por C é adicionado, com as mesmas cartas
+	var palpiteNovo = palpites[numRodada].clone();
+	palpiteNovo[0]=idJogadorCorreto;
+	palpites[numRodada][1]=idJogadorCorreto;
+	palpites[rodada++]=palpiteNovo;
+	iniciaTabela();
+}
+
+function inferirConhecoDoisItensDoPalpiteMostrado()
+{
+	for(i=0;i<rodada;i++)
+	{
+		palpite = palpites[i];
+		if(palpite!=undefined && palpite[0]!=palpite[1])
+		{
+			quemMostrou=palpite[1];
+			com=tabela_comodos[palpite[2]][quemMostrou];
+			arm=tabela_armas[palpite[3]][quemMostrou];
+			sus=tabela_suspeitos[palpite[4]][quemMostrou];
+
+			if(arm=='N' && sus=='N' && vazio(com)) //comodo eh o unico vazio ou undefined
+			{
+				tabela_comodos[palpite[2]][quemMostrou]='S';
+			}
+			if(com=='N' && sus=='N' && vazio(arm)) //arma eh o unico vazio ou undefined
+			{
+				tabela_armas[palpite[3]][quemMostrou]='S';
+			}
+			
+			if(com=='N' && arm=='N' && vazio(sus)) //suspeito eh o unico vazio ou undefined
+			{
+				tabela_suspeitos[palpite[4]][quemMostrou]='S';
+			}
+		}
+	}
+}
+
+function inferirSegundoPalpiteSimilarNaoMostrado()
+{
+	//if qtCartasIguais(palpite1,palpite2)==2 && palpite1.destino BETWEEN palpite2.origem E palpite2.destino THEN palpite1.destino tem palpite1.itemDiferente.
+	for(p1=0;p1<rodada;p1++)
+	{
+		for(p2=p1+1;p2<rodada;p2++)
+		{
+			if(palpites[p1][0]!=palpites[p1][1] && palpites[p2][0]!=palpites[p2][1])
+			{
+				if(isPrimeiroEntreSegundoETerceiro(palpites[p1][1],palpites[p2][0],palpites[p2][1]))
+				{
+					if(qtCartasIguais(palpites[p1],palpites[p2])==2)
+					{
+						if(palpites[p1][2]!=palpites[p2][2]) 
+						{
+							tabela_comodos[palpites[p1][2]][palpites[p1][1]]='S';
+						}
+						if(palpites[p1][3]!=palpites[p2][3])  
+						{
+							tabela_armas[palpites[p1][3]][palpites[p1][1]]='S';
+						}
+						if(palpites[p1][4]!=palpites[p2][4])  
+						{
+							tabela_suspeitos[palpites[p1][4]][palpites[p1][1]]='S';
+						}
+					}
+				}
+				
+				if(isPrimeiroEntreSegundoETerceiro(palpites[p2][1],palpites[p1][0],palpites[p1][1]))
+				{	
+					if(qtCartasIguais(palpites[p1],palpites[p2])==3)
+					{
+						alert("Jogador "+jogadores[palpites[p2][1]].toUpperCase()+" \nnao mostrou carta nenhuma\nem palpite IDÊNTICO, \n"+(rodada-p1-1)+' rodadas atras.'); 
+						corrigirPalpite(p1,palpites[p2][1]);
+					}
+				}	
+			}
+		}
+	}
+}
+
+function qtCartasIguais(palpite1,palpite2)
+{
+	// palpite/palpiteAtual = [0-numeroJogadorOrigem,1-numeroJogadorDestino,2-comodo,3-arma,4-suspeito]
+	var qt=0;
+	if(palpite1[2]==palpite2[2] && palpite1[2]!=undefined) qt++;
+	if(palpite1[3]==palpite2[3] && palpite1[3]!=undefined) qt++;
+	if(palpite1[4]==palpite2[4] && palpite1[4]!=undefined) qt++;
+	return qt;
+}
+
+function getIndexDaUnicaCartaDiferente(palpite1,palpite2)
+{
+	// palpite/palpiteAtual = [0-numeroJogadorOrigem,1-numeroJogadorDestino,2-comodo,3-arma,4-suspeito]
+	var index;
+	if(qtCartasIguais(palpite1,palpite2)==2)
+	{
+		if(palpite1[2]!=palpite2[2]) index=2;
+		if(palpite1[3]!=palpite2[3]) index=3;
+		if(palpite1[4]!=palpite2[4]) index=4;
+	}
+	return index;
+}
+
+function getIndexDaUnicaCartaConhecidaComNao(palpite)
+{
+	var index=0;
+	var qtConhecido=0;
+	var i;
+	for(i=0;i<3;i++) // 3 indexes das cartas
+	{
+		var atual=i+2;
+		var proximo1=(i+1)%3+2;
+		var proximo2=(i+2)%3+2;
+		
+		var tabela = getTabelaDoIndexDoPalpite(atual);
+		var proximaTabela1 = getTabelaDoIndexDoPalpite(proximo1);
+		var proximaTabela2 = getTabelaDoIndexDoPalpite(proximo2);
+		if (
+			tabela[palpite[atual]][palpite[indexQuemMostrou]]=="N"
+			&& vazioOuSim(proximaTabela1[palpite[proximo1]][palpite[indexQuemMostrou]])
+			&& vazioOuSim(proximaTabela2[palpite[proximo2]][palpite[indexQuemMostrou]])
+			)
+		{
+			return atual;
+		}
+	}
+	return undefined;
+}
+
+function getTabelaDoIndexDoPalpite(index)
+{
+	if(index==2) return tabela_comodos;
+	if(index==3) return tabela_armas;
+	if(index==4) return tabela_suspeitos;
+}
+
+function isPrimeiroEntreSegundoETerceiro(quemMostrouPrimeiroPalpite,quemFezSegundoPalpite,quemMostrouSegundoPalpite)
+{
+	var i;
+	for (i=(quemFezSegundoPalpite+1)%jogadores.length;i!=quemMostrouSegundoPalpite;i=(i+1)%jogadores.length)
+	{
+		if(i==quemMostrouPrimeiroPalpite)return true;
+	}
+	return false;
+}
+
+function verificaInconsistenciaTabela(stringTabela)
+{
+
+	//TODO verificar se cada tabela tem mais de uma carta com estaNoEnvelope(tabela,i)==true e iniciaTabela() (ou só avisar) só 1x (evitar recursiv infinita).
+
+	tabela = getTabelaFromString(stringTabela);
+	
+	//verifica se alguém tem mais cartas que (totalCartas/nJogadores)+1
+	qtCartasCadaJogadorTem = new Array(jogadores.length); //cada indice representa um jogador, e tem a qt de cartas q eu já conheço dele
+	var q;
+	for(q=0;q<qtCartasCadaJogadorTem.length;q++)
+	{
+		qtCartasCadaJogadorTem[q]=0;
+	}
+	
+	for(i=0;i<tabela.length;i++)
+	{
+		qtSims=0;
+		qtNaos=0;
+		qtVazios=0;
+		
+		for(jog=0;jog<jogadores.length;jog++)
+		{
+			if(tabela[i][jog]=='S')
+			{
+				qtSims++;
+				qtCartasCadaJogadorTem[jog]++;
+			}
+			if(tabela[i][jog]=='N')qtNaos++;
+			if(tabela[i][jog]=='' || tabela[i][jog]==undefined)qtVazios++;
+		}
+
+		
+		if( qtSims>1 || (qtSims+qtNaos+qtVazios)!=jogadores.length 	)
+			alert("Devido a erro em suas tabela,\ncarta "+eval(stringTabela+"s")[i]+'\nesta nas maos de duas pessoas.');
+	}
+	//verifica se alguém tem mais cartas que (totalCartas/nJogadores)+1
+	for(q=0;q<qtCartasCadaJogadorTem.length;q++)
+	{
+		var totalCartas=tabela_comodos.length+tabela_armas.length+tabela_suspeitos.length;
+		if(qtCartasCadaJogadorTem[q]>Math.ceil(totalCartas/jogadores.length))
+		{
+			alert("Jogador "+jogadores[q]+",\n de acordo com sua tabela,\npossui mais cartas do que poderia.");
+		}
+	}
+}
+
+function verificaAcusacao()
+{
+	acusacao_comodo=undefined;
+	acusacao_arma=undefined;
+	acusacao_suspeito=undefined;
+	
+	var c=0;
+	for(c=0;c<tabela_comodos.length;c++)
+	{
+		if(estaNoEnvelope(tabela_comodos, c))
+			acusacao_comodo=c;			
+	}
+	
+	var a=0;
+	for(a=0;a<tabela_armas.length;a++)
+	{
+		if(estaNoEnvelope(tabela_armas, a))
+			acusacao_arma=a;
+	}
+
+	var s=0
+	for(s=0;s<tabela_suspeitos.length;s++)
+	{
+		if(estaNoEnvelope(tabela_suspeitos, s))
+			acusacao_suspeito=s;
+	}
+	
+	if(acusacao_comodo!=undefined && acusacao_arma!=undefined && acusacao_suspeito!=undefined)
+	{
+		mostraMenu();
+		var mensagem="Acuse: "+comodos[acusacao_comodo]+", "+armas[acusacao_arma]+", "+suspeitos[acusacao_suspeito];
+		alert(mensagem);
+	}
+	
+}
+
+function selecionaOrigemPalpiteAtual(id)
+{
+	//origem significa: jogador que fez o palpite
+	palpiteAtual[0]=id;
+
+	if(id==0)
+	{
+		sugerirPalpite(true);
+	}else
+	{
+		// palpite/palpiteAtual = [0-numeroJogadorOrigem,1-numeroJogadorDestino,2-comodo,3-arma,4-suspeito]
+		palpiteAtual[1]=undefined;
+		palpiteAtual[2]=undefined;
+		palpiteAtual[3]=undefined;
+		palpiteAtual[4]=undefined;
+		sugestoesPalpite=new Array(1000);
+		indexSugestaoPalpiteAtual=0;
+		qtSugestoes=0;
+	}
+	
+	abaPalpites();
+}
+
+//function sugerirPalpite(redefinir) (está em um JS dedicado)
+
+function selecionaDestinoPalpiteAtual(id)
+{
+	//destino eh o jogador que mostrou uma das cartas pra outro jogador
+	palpiteAtual[1]=id;
+	abaPalpites();
+}
+function selecionaComodoPalpiteAtual(id)
+{
+	palpiteAtual[2]=id;
+	
+	//se a origem for o próprio jogador
+	if(palpiteAtual[0]==0)
+		sugerirPalpite(false);
+	
+	abaPalpites();
+}
+function selecionaArmaPalpiteAtual(id)
+{
+	palpiteAtual[3]=id;
+	
+	abaPalpites();
+}
+function selecionaSuspeitoPalpiteAtual(id)
+{
+	palpiteAtual[4]=id;
+	abaPalpites();
+}
+
+function abaTabela()
+{
+	abaAtual="tabela";
+	mostraMenu();
+	
+	tds_jogadores="";
+	for(i=0;i<jogadores.length;i++)
+	{
+		tds_jogadores+=("<td style=\"text-align:center;min-width:16%\">"+jogadores[i].substr(0,2)+"</td>");
+	}
+	tds_jogadores+=("<td style=\"text-align:center;min-width:16%\">??</td>");
+	saida="<table>";
+	
+	//seção dos comodos
+	saida+="<tr style='background-color:#ff9900; text-color: #fff'>" +
+			"<td>Comodo</td>"+tds_jogadores+"</tr>";
+	saida+=trsTabela("comodo",comodos);
+	
+	//seção dos armas
+	saida+="<tr style='background-color:#ff9900; text-color: #fff'>" +
+			"<td>Arma</td>"+tds_jogadores+"</tr>";
+	saida+=trsTabela("arma",armas);
+
+	//seção dos suspeitos
+	saida+="<tr style='background-color:#ff9900; text-color: #fff'>" +
+	"<td>Suspeito</td>"+tds_jogadores+"</tr>";
+	saida+=trsTabela("suspeito",suspeitos);
+	
+	saida+="</table>";
+	mostrar(saida);
+}
+
+function trsTabela(stringTabela,descricoes)
+{
+	tabela = getTabelaFromString(stringTabela);
+	saida="";
+	for(i=0;i<tabela.length;i++)
+	{
+		cor='ffffff';
+		
+		if(estaNoEnvelope(tabela,i))
+		{
+			cor='00ff00';
+		}else if(getSNInterrogacao(tabela, i)=='S')
+		{
+			cor='CCCCCC'
+		}
+		saida+=("<tr style='background:#"+cor+"'><td>"+descricoes[i]);
+		for(k=0;k<tabela[i].length;k++)
+		{
+			var novoValor;
+			if(tabela[i][k]==undefined || tabela[i][k]=='')
+			{
+				saida+=("<td><input type='button' class='botao_tabela' value='' onclick=\"atualizaTabela('"+stringTabela+"',"+i+","+k+",(confirm('OK-S... Cancelar-N')?'S':'N'));abaTabela();\"></td>");
+			}
+			else
+				saida+=("<td><input type='button' class='botao_tabela' value='"+tabela[i][k]+"' onclick=\"atualizaTabela('"+stringTabela+"',"+i+","+k+",'');abaTabela();\"></td>");
+		}
+		saida+="</tr>";
+	}
+	return saida;
+}
+
+function getTabelaFromString(stringTabela)
+{
+	if(stringTabela==tabela_comodos)return tabela_comodos;
+	if(stringTabela==tabela_armas)return tabela_armas;
+	if(stringTabela==tabela_suspeitos)return tabela_suspeitos;
+	
+	if(eval("tabela_"+stringTabela+"s")!=undefined)
+		return eval("tabela_"+stringTabela+"s");
+	else 
+	{
+		alert('erro na getTAbelaFromsTring()');	
+		return undefined;
+	}
+}
+
+function atualizaTabela(stringTabela,linha,jogador,valor)
+{
+	tabela=getTabelaFromString(stringTabela);
+	
+	var tabelaAntes=JSON.stringify(tabela);
+		
+	var mensagem='';
+	if( valor=='' && tabela[linha][jogador]=='S')
+	{	
+		mensagem='Desabilite (i) e corrija os seguintes problemas:\n';
+		var indexDono=getIdJogadorDono(tabela,linha);
+		if(jogador<indexAlguemTem)
+			tabela[linha][indexAlguemTem]='';
+		if(jogador==indexAlguemTem && indexDono!="")
+			tabela[linha][indexDono]='';
+	} else if( valor=='' && tabela[linha][jogador]=='N')
+	{
+		if(jogador==indexAlguemTem)
+			alert('Desmarque quem nao tem primeiro!');
+		else
+			tabela[linha][indexAlguemTem]='';
+	}
+		
+	if(tabela[linha][jogador]=='N' && getSNInterrogacao(tabela, linha)=='N' && valor=='')
+		tabela[linha][indexAlguemTem]='';
+		
+	tabela[linha][jogador]=valor;
+	
+	if(inteligente==true)
+		inferir();
+	
+	var tabelaDepois = JSON.stringify(getTabelaFromString(stringTabela));
+	
+	if(tabelaAntes==tabelaDepois)
+	{
+		alert('Para fazer esta modificacao sera necessario \nusar o botao desfazer ( < ) ou \ndesativar (i) e modificar diversos campos.');
+	}
+	else
+	{
+		eval("tabela_"+stringTabela+"s_insercao_manual")[linha][jogador]=valor;
+		backupEstado();
+	}
+	
+}
+
+function adicionarPalpite(array,item)
+{
+	var novoArray = new Array(array.length+1);
+	for(i=0;i<array.length;i++)
+		novoArray(i)=array(i);
+}
+
+function backupEstado()
+{
+	//acusacao_comodo=undefined;
+	//acusacao_arma=undefined;
+	//acusacao_suspeito=undefined;
+	
+	backup = new Array(22);
+	var i=0;
+	backup[i++]=proximoSequencialBackup+1;
+	backup[i++]=(proximoSlotBackup+1)%backups.length;
+	backup[i++]=tabela_comodos.clone();
+	backup[i++]=tabela_armas.clone();
+	backup[i++]=tabela_suspeitos.clone();
+	backup[i++]=palpites.clone();
+	backup[i++]=rodada;
+	backup[i++]=palpiteAtual.clone();
+	backup[i++]=sugestoesPalpite.clone();
+	backup[i++]=indexSugestaoPalpiteAtual;
+	backup[i++]=qtSugestoes;
+	backup[i++]=jogadores.clone();
+	backup[i++]=indexAlguemTem;
+	backup[i++]=maxNumJogadores;
+	backup[i++]=comodos.clone();
+	backup[i++]=armas.clone();
+	backup[i++]=suspeitos.clone();
+	backup[i++]=acusacao_comodo;
+	backup[i++]=acusacao_arma;
+	backup[i++]=acusacao_suspeito;
+	backup[i++]=tabela_comodos_insercao_manual.clone();
+	backup[i++]=tabela_armas_insercao_manual.clone();
+	backup[i++]=tabela_suspeitos_insercao_manual.clone();
+	backup[i++]=abaAtual;
+	backup[i++]=ordenacaoAtual;
+	backup[i++]=inteligente;
+	
+	backups[proximoSlotBackup]=backup;
+	proximoSlotBackup=(proximoSlotBackup+1)%backups.length;
+	proximoSequencialBackup=proximoSequencialBackup+1;
+	
+	backupToCookies();
+}
+
+function restoreEstado(index)
+{
+	var i=0;
+	proximoSequencialBackup=backups[index][i++];
+	proximoSlotBackup=backups[index][i++];
+	tabela_comodos=backups[index][i++].clone();
+	tabela_armas=backups[index][i++].clone();
+	tabela_suspeitos=backups[index][i++].clone();
+	palpites=backups[index][i++].clone();
+	rodada=backups[index][i++];
+	palpiteAtual=backups[index][i++].clone();
+	sugestoesPalpite=backups[index][i++].clone();
+	indexSugestaoPalpiteAtual=backups[index][i++];
+	qtSugestoes=backups[index][i++];
+	jogadores=backups[index][i++].clone();
+	indexAlguemTem=backups[index][i++];
+	maxNumJogadores=backups[index][i++];
+	comodos=backups[index][i++].clone();
+	armas=backups[index][i++].clone();
+	suspeitos=backups[index][i++].clone();
+	acusacao_comodo=backups[index][i++];
+	acusacao_arma=backups[index][i++];
+	acusacao_suspeito=backups[index][i++];
+	tabela_comodos_insercao_manual=backups[index][i++].clone();
+	tabela_armas_insercao_manual=backups[index][i++].clone();
+	tabela_suspeitos_insercao_manual=backups[index][i++].clone();
+	abaAtual=backups[index][i++];
+	ordenacaoAtual=backups[index][i++];
+	inteligente=backups[index][i++];
+}
+
+function avancarBackup()
+{
+	var slotProximo=proximoSlotBackup % backups.length;
+	var slotAtual=(proximoSlotBackup+(backups.length-1)) % backups.length;
+	if( backups[slotProximo]!=undefined && backups[slotAtual]!=undefined && backups[slotProximo][0]>backups[slotAtual][0] )
+	{
+		var antigaAba=abaAtual;
+		var ordenacaoDetalhesAntiga=ordenacaoAtual;
+		var inteligenciaAntiga=inteligente;
+		
+		restoreEstado(slotProximo);
+		
+		ordenacaoAtual=ordenacaoDetalhesAntiga;
+		refreshDisplay(antigaAba);
+		inteligente=inteligenciaAntiga;
+		
+		backupToCookies();
+	}else
+	{
+		alert('Nao ha o que re-fazer.');
+	}
+}
+
+function voltarBackup()
+{
+	var slotAnterior=(proximoSlotBackup+(backups.length-2)) % backups.length;
+	var slotAtual=(proximoSlotBackup+(backups.length-1)) % backups.length;
+	if( backups[slotAnterior]!=undefined && backups[slotAtual]!=undefined && backups[slotAnterior][0]<backups[slotAtual][0] )
+	{
+		var antigaAba=abaAtual;
+		var ordenacaoDetalhesAntiga=ordenacaoAtual;
+		var inteligenciaAntiga=inteligente;
+		
+		restoreEstado(slotAnterior);
+		
+		ordenacaoAtual=ordenacaoDetalhesAntiga;
+		refreshDisplay(antigaAba);
+		inteligente=inteligenciaAntiga;
+		
+		backupToCookies();
+	}else
+	{
+		alert('Nao ha o que desfazer.');
+	}
+}
+
+function backupToCookies()
+{
+	//var slotAtual=(proximoSlotBackup+(backups.length-1)) % backups.length;
+	//setCookie('backup',backups[slotAtual],365);
+	setCookie('backups',backups,365);
+	setCookie('proximoSlotBackup',proximoSlotBackup,365);
+}
+
+function restoreFromCookies()
+{
+	backups=getCookie('backups'); 
+	proximoSlotBackup=getCookie('proximoSlotBackup'); 
+	var slotAtual=(proximoSlotBackup+(backups.length-1)) % backups.length;
+	restoreEstado(slotAtual);
+	refreshDisplay();
+	/*
+	backups = new Array(5);
+	backups[0]=getCookie('backup'); //cookies so tem o ultimo backup
+	backups[0][0]=1;
+	backups[0][1]=1;
+	restoreEstado(0);
+	refreshDisplay();
+	*/
+}
+
+function refreshDisplay(aba)
+{
+	if(aba!==undefined)
+		abaAtual=aba;
+	if(abaAtual=='tabela')
+		abaTabela();
+	else if(abaAtual=='palpites')
+		abaPalpites();
+	else if(abaAtual=='detalhes')
+		abaDetalhes();
+}
+
+function vazio(objeto)
+{
+	return objeto==undefined || objeto=='';
+}
+
+function vazioOuSim(objeto)
+{
+	return objeto===undefined || objeto==='' || objeto==='S';
+}
+
+// palpite/palpiteAtual = [0-numeroJogadorOrigem,1-numeroJogadorDestino,2-comodo,3-arma,4-suspeito,5-offsetCartaMostrada(2=comodo,3=arma,4=susp)]
+// tabela_comodos[numeroComodo][numeroJogador] = "","S" ou "N"... ultimo indice eh o jogador "alguem"
+// estaNoEnvelope(tudo da linha é N ou todos outros itens tem S)
+// isTodosOsOutrosEmMaos(tabela,idItem)
+// quemTem(tabela,idItem)
+// getSNInterrogacao(tabela,idItem)
+// qtCartasDoPalpiteEmMaos(PALPITE)
+function sugerirPalpite(podeRedefinirComodo)
+{
+	if(!inteligente)return;
+	var indexJogadorDestino=1;
+	var indexComodo=2;
+	var indexArma=3;
+	var indexSuspeito=4;
+	var comodoSelecionado = palpiteAtual[indexComodo];
+	palpiteAtual[indexJogadorDestino]=undefined;
+	if(podeRedefinirComodo)palpiteAtual[indexComodo]=undefined;
+	palpiteAtual[indexArma]=undefined;
+	palpiteAtual[indexSuspeito]=undefined;
+	
+	sugestoesPalpite = new Array(1000);
+	qtSugestoes=0;
+	
+	var incluirCartasRuinsFalse=false; //cartas que ja conheço quem tem (e nao sou eu) ou que alguemTem
+	sugerirTerceiroPalpiteIdentico(incluirCartasRuinsFalse); //bom para inferirDuvidaNCartasNPessoas() no caso de 3 palpites identicos
+	sugerirPalpiteSimilarComUmaCartaConhecidaNao(incluirCartasRuinsFalse); //bom para inferirDuvidaNCartasNPessoas() no caso de 2 palpites
+	sugerirPalpiteComMuitosNaos(incluirCartasRuinsFalse);
+	
+	
+	/*
+	//TODO sugestoes para inferirSegundoPalpiteSimilarNaoMostrado() e inferirQuatroPalpitesSemIntercessao()
+	//sugerirBlefeDuasCartasMinhas(incluirCartasRuinsFalse);
+	var incluirCartasRuins=true;
+	sugerirTerceiroPalpiteIdentico(incluirCartasRuins);
+	sugerirPalpiteSimilarComUmaCartaConhecidaNao(incluirCartasRuins);
+	sugerirPalpiteComMuitosNaos(incluirCartasRuins);
+	//sugerirBlefeDuasCartasMinhas(incluirCartasRuins);
+	*/
+	
+	//ordenar sugestoes adicionadas no array
+	filtrarSugestoesPorComodo(podeRedefinirComodo);
+	
+	selecionarSugestao(0);
+}
+
+function qtPalpitesMeus()
+{
+	var r;
+	var qt=0;
+	for(r=0;r<rodada;r++)
+	{
+		if(palpites[r][0]==0)
+			qt++;
+	}
+	return qt;
+}
+
+function filtrarSugestoesPorComodo(podeRedefinirComodo)
+{
+	//TODO aaaa Para cada palpite existente X varrer sugestoes de palpites meus Y. 
+	//Se cartas de X == cartas Y e EU estiver entre ORIGEM e DESTINO do palpite existente, eliminar palpite.
+	//isto nunca vai ocorrer porque eu so sugiro quando tem 2 cartas iguais, nao 3.
+	
+	if(qtSugestoes>0)
+	{
+		if(!podeRedefinirComodo)
+		{	
+			var cloneSugestoes = new Array(1000);
+			var qtCloneSugestoes=0;
+			var s;
+			for (s=0;s<qtSugestoes;s++)
+			{
+				//somente eh aceitavel o comodo do palpiteAtual
+				if(sugestoesPalpite[s][2]==palpiteAtual[2])
+				{
+					cloneSugestoes[qtCloneSugestoes++]=sugestoesPalpite[s];
+				}
+			}
+			sugestoesPalpite=cloneSugestoes.clone();
+			qtSugestoes=qtCloneSugestoes;
+		}
+	}
+}
+
+function selecionarSugestao(n)
+{
+	if(qtSugestoes>0 && n>=0 && n<qtSugestoes)
+	{
+		indexSugestaoPalpiteAtual=n;
+		palpiteAtual=sugestoesPalpite[indexSugestaoPalpiteAtual].clone();
+	}
+	if(n<0)
+		indexSugestaoPalpiteAtual=0;
+	if(n>=qtSugestoes)
+		indexSugestaoPalpiteAtual=qtSugestoes==0?0:qtSugestoes-1;
+		
+	abaPalpites();
+}
+
+function sugerirPalpiteSimilarComUmaCartaConhecidaNao(incluir)
+{
+	//pegar como base palpites já feitos que tenham, para o jogador q mostrou, 01 carta conhecida=N e 2 cartas desconhecidas.
+	//trocar a carta conhecida=N por: melhores cartas, na ordem
+	//manter as 2 cartas desconhecidas do palpite original no novo palpite
+	
+	var comodosBons;
+	var armasBoas;
+	var suspeitosBons;
+	//params:(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+	comodosBons=ordenaMelhoresCartasParaPalpite(tabela_comodos,true,true,true,incluir);
+	armasBoas=ordenaMelhoresCartasParaPalpite(tabela_armas,true,true,true,incluir);
+	suspeitosBons=ordenaMelhoresCartasParaPalpite(tabela_suspeitos,true,true,true,incluir);
+	
+	var c;
+	var a;
+	var s;
+	var z;
+	for(c=0;c<comodosBons.length;c++)
+	{
+		for(a=0;a<armasBoas.length;a++)
+		{
+			for(s=0;s<suspeitosBons.length;s++)
+			{
+				var sugest=new Array(6);
+				sugest[0]=0;
+				//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+				sugest[2]=comodosBons[c];
+				sugest[3]=armasBoas[a];
+				sugest[4]=suspeitosBons[s];
+				
+				
+				
+				for(z=0;z<rodada;z++) 
+				{
+					//if(sugest[2]==2 && sugest[3]==5 & sugest[4]==0 && z==5)
+						//alert('oi');
+					var existente = palpites[z];					
+					var indexExistenteUnicoConhecidoNao = getIndexDaUnicaCartaConhecidaComNao(existente);
+					var tabelaNao = getTabelaDoIndexDoPalpite(indexExistenteUnicoConhecidoNao);
+					var outroIndex1=(indexExistenteUnicoConhecidoNao-2+1)%3+2;
+					var outroIndex2=(indexExistenteUnicoConhecidoNao-2+2)%3+2;
+					
+					
+					if( indexExistenteUnicoConhecidoNao!==undefined 
+						&& existente[indexQuemPalpitou]!=existente[indexQuemMostrou]
+						&& existente[outroIndex1]==sugest[outroIndex1]
+						&& existente[outroIndex2]==sugest[outroIndex2]
+						&& (incluir==false && 
+								( tabelaNao[sugest[indexExistenteUnicoConhecidoNao]][0]=='S'
+								  || estaNoEnvelope(tabelaNao,sugest[indexExistenteUnicoConhecidoNao])
+								)
+							|| incluir==true)
+					)
+					{
+						//ordenaMelhoresCartasParaPalpite() traz cartas de palpites que eu fiz ou mostrei bem por ultimo.
+						//TODO aaaa verificar se, nesse IF, precisa acrescentar existente[0]!=0 && existente[1]!=0.
+						
+						if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+							sugestoesPalpite[qtSugestoes++]=sugest;
+					}
+				}
+			}
+		}
+	}
+}
+
+function sugerirTerceiroPalpiteIdentico(incluirCartasRuins)
+{
+	//pegar como base 2 palpites identicos e sugerir um terceiro, contanto que as cartas da sugestão venham primeiro boas.
+	
+	var comodosBons;
+	var armasBoas;
+	var suspeitosBons;
+	//params:(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+	comodosBons=ordenaMelhoresCartasParaPalpite(tabela_comodos,true,true,true,incluirCartasRuins);
+	armasBoas=ordenaMelhoresCartasParaPalpite(tabela_armas,true,true,true,incluirCartasRuins);
+	suspeitosBons=ordenaMelhoresCartasParaPalpite(tabela_suspeitos,true,true,true,incluirCartasRuins);
+	
+	var c;
+	var a;
+	var s;
+	var z;
+	var w;
+	for(c=0;c<comodosBons.length;c++)
+	{
+		for(a=0;a<armasBoas.length;a++)
+		{
+			for(s=0;s<suspeitosBons.length;s++)
+			{
+				var sugest=new Array(6);
+				sugest[0]=0;
+				//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+				sugest[2]=comodosBons[c];
+				sugest[3]=armasBoas[a];
+				sugest[4]=suspeitosBons[s];
+				
+				for(z=0;z<rodada;z++) 
+				{
+					for(w=z+1;w<rodada;w++)
+					{
+						var palpite1 = palpites[z];
+						var palpite2 = palpites[w];
+						if(qtCartasIguais(palpite1,palpite2)==3 
+							&& qtCartasIguais(palpite2,sugest)==3 
+							&& palpite1[indexQuemMostrou]!=palpite2[indexQuemMostrou]
+							&& palpite2[indexQuemMostrou]!=sugest[indexQuemMostrou]
+							&& palpite1[indexQuemMostrou]!=sugest[indexQuemMostrou]
+							&& palpite1[indexQuemPalpitou]!=palpite1[indexQuemMostrou]
+							&& palpite2[indexQuemPalpitou]!=palpite2[indexQuemMostrou]
+							&& sugest[indexQuemPalpitou]!=sugest[indexQuemMostrou]
+						)
+						{
+							if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+								sugestoesPalpite[qtSugestoes++]=sugest;
+						}
+
+					}
+				}
+			}
+		}
+	}
+}
+
+
+function sugerirPalpiteComMuitosNaos(incluirCartasRuins)
+{
+	var comodosBons;
+	var armasBoas;
+	var suspeitosBons;
+	//(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+	comodosBons=ordenaMelhoresCartasParaPalpite(tabela_comodos,true,true,true,incluirCartasRuins);
+	armasBoas=ordenaMelhoresCartasParaPalpite(tabela_armas,true,true,true,incluirCartasRuins);
+	suspeitosBons=ordenaMelhoresCartasParaPalpite(tabela_suspeitos,true,true,true,incluirCartasRuins);
+	
+	var c;
+	var a;
+	var s;
+	for(c=0;c<comodosBons.length;c++)
+	{
+		for(a=0;a<armasBoas.length;a++)
+		{
+			for(s=0;s<suspeitosBons.length;s++)
+			{
+				var sugest=new Array(6);
+				sugest[0]=0;
+				//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+				sugest[2]=comodosBons[c];
+				sugest[3]=armasBoas[a];
+				sugest[4]=suspeitosBons[s];
+				
+				if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+					sugestoesPalpite[qtSugestoes++]=sugest;
+			}
+		}
+	}
+}
+
+function sugerirBlefeDuasCartasMinhas(incluirCartasRuins)
+{
+	var comodosBons;
+	var armasBoas;
+	var suspeitosBons;
+	var incluirCartasMinhas=false;
+	//(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+	comodosBons=ordenaMelhoresCartasParaPalpite(tabela_comodos,true,true,incluirCartasMinhas,incluirCartasRuins);
+	armasBoas=ordenaMelhoresCartasParaPalpite(tabela_armas,true,true,incluirCartasMinhas,incluirCartasRuins);
+	suspeitosBons=ordenaMelhoresCartasParaPalpite(tabela_suspeitos,true,true,incluirCartasMinhas,incluirCartasRuins);
+	
+	//(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+	var comodosMeus=ordenaMelhoresCartasParaPalpite(tabela_comodos,false,false,true,false);
+	var armasMinhas=ordenaMelhoresCartasParaPalpite(tabela_armas,false,false,true,false);
+	var suspeitosMeus=ordenaMelhoresCartasParaPalpite(tabela_suspeitos,false,false,true,false);
+	
+	if(	comodosMeus.length>0 && armasMinhas.length>0 )
+	{
+		var c;
+		var a;
+		var s;
+		for(c=0;c<comodosMeus.length;c++)
+		{
+			for(a=0;a<armasMinhas.length;a++)
+			{
+				for(s=0;s<suspeitosBons.length;s++)
+				{
+					var sugest=new Array(6);
+					sugest[0]=0;
+					//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+					sugest[2]=comodosMeus[c];
+					sugest[3]=armasMinhas[a];
+					sugest[4]=suspeitosBons[s];
+					
+					if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+						sugestoesPalpite[qtSugestoes++]=sugest;
+				}
+			}
+		}
+	}
+	
+	if( suspeitosMeus.length>0 && comodosMeus.length>0 )
+	{
+		var c;
+		var a;
+		var s;
+		for(c=0;c<comodosMeus.length;c++)
+		{
+			for(a=0;a<armasBoas.length;a++)
+			{
+				for(s=0;s<suspeitosMeus.length;s++)
+				{
+					var sugest=new Array(6);
+					sugest[0]=0;
+					//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+					sugest[2]=comodosMeus[c];
+					sugest[3]=armasBoas[a];
+					sugest[4]=suspeitosMeus[s];
+					
+					if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+						sugestoesPalpite[qtSugestoes++]=sugest;
+				}
+			}
+		}
+	}
+	
+	if( suspeitosMeus.length>0 && armasMinhas.length>0 )
+	{
+		var c;
+		var a;
+		var s;
+		for(c=0;c<comodosBons.length;c++)
+		{
+			for(a=0;a<armasMinhas.length;a++)
+			{
+				for(s=0;s<suspeitosMeus.length;s++)
+				{
+					var sugest=new Array(6);
+					sugest[0]=0;
+					//sugest[1]=??? isso eh a sugestao e ainda nao sabemos quem vai mostrar;
+					sugest[2]=comodosBons[c];
+					sugest[3]=armasMinhas[a];
+					sugest[4]=suspeitosMeus[s];
+					
+					if(!isInArraySugestoesPalpite(sugest,sugestoesPalpite))
+						sugestoesPalpite[qtSugestoes++]=sugest;
+				}
+			}
+		}
+	}
+}
+
+function isInArraySugestoesPalpite(elemento,vetor)
+{
+	var i;
+	for(i=0;i<vetor.length;i++)
+	{
+		if(vetor[i]!=undefined && vetor[i].length>0 && vetor[i][2]==elemento[2] && vetor[i][3]==elemento[3] && vetor[i][4]==elemento[4])return true;
+	}
+	return false;
+}
+
+function getIdJogadorDono(stringTabela,linha)
+{
+	var tabela = getTabelaFromString(stringTabela);
+	var i=0;
+	for(i=0;i<jogadores.length;i++)
+	{
+		if(tabela[linha][i]=='S')
+			return i;
+	}
+	return "";
+}
+
+function temDuvidaTabela(tabela)
+{
+	//retorna TRUE se algum item da tabela é desconhecido
+	var i=0;
+	for(i=0;i<tabela.length;i++)
+	{
+		if( estaNoEnvelope(tabela,i) )
+			return false;
+	}
+	return true;
+}
+
+function ordenaMelhoresCartasParaPalpite(tabela,incluirCartasMelhores,incluirCartasEnvelope,incluirCartasMinhas,incluirCartasRuins)
+{
+	var tempArray = new Array(tabela.length);
+	var ret = new Array(0);
+	var i=0;
+	var qtUtilizavel=0;
+	for(i=0;i<tabela.length;i++)
+	{
+		var isCartaBoa1=incluirCartasMelhores==true && getSNInterrogacao(tabela,i)=='?';
+		var isCartaBoa2=incluirCartasEnvelope==true && estaNoEnvelope(tabela,i);
+		var isCartaBoa3=incluirCartasMinhas==true && tabela[i][0]=="S";
+		var isCartaBoa4=incluirCartasRuins==true && tabela[i][0]!="S" && getSNInterrogacao(tabela,i)=='S';
+		if( isCartaBoa1 || isCartaBoa2 || isCartaBoa3 || isCartaBoa4 )
+		{
+			var temp = new Array(2);
+			var indexPesoOrdenacao=1; //o peso da ordenacao eh definido abaixo (nao ha maximo)
+			temp[0]=i;
+			if ( isCartaBoa1 )
+			{
+				//carta que voce sabe que muita gente nao tem
+				temp[indexPesoOrdenacao]=jogadores.length+getQuantidadeDeStatus(tabela,i,"N");
+			}else
+			if ( isCartaBoa2 )
+			{
+				//carta no envelope
+				temp[indexPesoOrdenacao]=jogadores.length*2;
+			}else
+			if ( isCartaBoa3 )
+			{
+				//carta minha
+				temp[indexPesoOrdenacao]=jogadores.length*2;
+			}else
+			if( isCartaBoa4 )
+			{
+				//carta ruim, não minha, na mão de alguém (especifico ou nao)
+				var indexDonoEspecifico=getIdJogadorDono(tabela,i);
+				if(indexDonoEspecifico!="")
+					temp[indexPesoOrdenacao]=indexDonoEspecifico;
+				else
+					temp[indexPesoOrdenacao]=0;
+			}
+			if(temp[indexPesoOrdenacao]!=undefined)
+				tempArray[qtUtilizavel++]=temp;
+		}
+	}
+	tempArray.sort(	function(a, b)
+				{
+					var x = a[1];
+					var y = b[1];
+					return y-x;
+				}
+			);
+	ret = new Array(qtUtilizavel);
+	for(i=0;i<qtUtilizavel;i++)
+	{
+		ret[i]=tempArray[i][0];
+	}
+	return ret;
+}
+
+function qtCartasDoPalpiteEmMaos(palpite)
+{
+	var qtCartasConhecidas=0;
+	
+	if(quemTem("comodo",palpite[2])!="") qtCartasConhecidas++;
+	if(quemTem("arma",palpite[3])!="") qtCartasConhecidas++;
+	if(quemTem("suspeito",palpite[4])!="") qtCartasConhecidas++;
+	
+	return qtCartasConhecidas;
+}
+
+function estaNoEnvelope(tabela,id)
+{
+	if (getSNInterrogacao(tabela,id)=='N')
+		return true;
+	else
+	{
+		if(isTodosOsOutrosEmMaos(tabela,id))
+			return true;
+		else
+			return false;
+	}
+}
+
+function getSNInterrogacao(tabela,linha)
+{
+	var qtNao=0;
+	var qtSim=0;
+	var i=0;
+	for(i=0;i<jogadores.length;i++)
+	{
+		if (tabela[linha][i]=='S')
+		{
+			qtSim++;
+		}
+		if (tabela[linha][i]=='N')
+		{
+			qtNao++;
+		}
+	}
+	if(qtSim>=1 || tabela[linha][indexAlguemTem]=='S')return "S";
+	if(qtNao==jogadores.length || tabela[linha][indexAlguemTem]=='N')return "N"; //todos os jogadores tem que ter N e o AlguemTem tambem
+	return "?";
+}
+
+function getQuantidadeDeStatus(tabela,linha,statusDesejado)
+{
+	var qtProcurada=0;
+	var i=0;
+	for(i=0;i<indexAlguemTem;i++)
+	{
+		if (tabela[linha][i]==statusDesejado)
+		{
+			qtProcurada++;
+		}
+	}
+	return qtProcurada;
+}
+
+function isTodosOsOutrosEmMaos(tabela,linha)
+{
+	//retorna TRUE se todos os outros itens da mesma tabela estao na mao de alguem
+	var i=0;
+	for(i=0;i<tabela.length;i++)
+	{
+		if(i!=linha)
+		{
+			if(getSNInterrogacao(tabela,i)!='S')
+				return false;
+		}
+	}
+	return true;
+}
+
+function quemTem(stringTabela,linha)
+{
+	var tabela = getTabelaFromString(stringTabela);
+	var i=0;
+	for(i=0;i<jogadores.length;i++)
+	{
+		if(tabela[linha][i]=='S')
+			return "("+jogadores[i].substr(0,2)+")";
+	}
+	if(tabela[linha][jogadores.length]=='S') //jogador "alguem_incerto"
+		return "(??)";
+	return "";
+}
+
+function getCookie(name)
+{
+	return JSON.parse(localStorage.getItem(name));
+	//var result = document.cookie.match(new RegExp(name + '=([^;]+)'));
+	//result && (result = JSON.parse(result[1]));
+	//return result;
+}
+
+function setCookie(c_name,c_value,exdays)
+{
+	var temp = JSON.stringify(c_value);
+	localStorage.setItem(c_name, temp);
+	//return;
+	
+	//var exdate=new Date();
+	//exdate.setDate(exdate.getDate() + exdays);
+	
+	//var c_value=temp + ((exdays==null) ? "" : "; expires="+exdate.toUTCString());
+	//document.cookie=c_name + "=" + c_value;
+}
+
+function deleteCookie(name) {
+	localStorage.removeItem(name);
+	//document.cookie = [name, '=; expires=Thu, 01-Jan-1970 00:00:01 GMT; path=/; domain=.', window.location.host.toString()].join('');
+}
+
+/*
+    json2.js
+    2012-10-08
+
+    Public Domain.
+
+    NO WARRANTY EXPRESSED OR IMPLIED. USE AT YOUR OWN RISK.
+
+    See http://www.JSON.org/js.html
+
+
+    This code should be minified before deployment.
+    See http://javascript.crockford.com/jsmin.html
+
+    USE YOUR OWN COPY. IT IS EXTREMELY UNWISE TO LOAD CODE FROM SERVERS YOU DO
+    NOT CONTROL.
+
+
+    This file creates a global JSON object containing two methods: stringify
+    and parse.
+
+        JSON.stringify(value, replacer, space)
+            value       any JavaScript value, usually an object or array.
+
+            replacer    an optional parameter that determines how object
+                        values are stringified for objects. It can be a
+                        function or an array of strings.
+
+            space       an optional parameter that specifies the indentation
+                        of nested structures. If it is omitted, the text will
+                        be packed without extra whitespace. If it is a number,
+                        it will specify the number of spaces to indent at each
+                        level. If it is a string (such as '\t' or '&nbsp;'),
+                        it contains the characters used to indent at each level.
+
+            This method produces a JSON text from a JavaScript value.
+
+            When an object value is found, if the object contains a toJSON
+            method, its toJSON method will be called and the result will be
+            stringified. A toJSON method does not serialize: it returns the
+            value represented by the name/value pair that should be serialized,
+            or undefined if nothing should be serialized. The toJSON method
+            will be passed the key associated with the value, and this will be
+            bound to the value
+
+            For example, this would serialize Dates as ISO strings.
+
+                Date.prototype.toJSON = function (key) {
+                    function f(n) {
+                        // Format integers to have at least two digits.
+                        return n < 10 ? '0' + n : n;
+                    }
+
+                    return this.getUTCFullYear()   + '-' +
+                         f(this.getUTCMonth() + 1) + '-' +
+                         f(this.getUTCDate())      + 'T' +
+                         f(this.getUTCHours())     + ':' +
+                         f(this.getUTCMinutes())   + ':' +
+                         f(this.getUTCSeconds())   + 'Z';
+                };
+
+            You can provide an optional replacer method. It will be passed the
+            key and value of each member, with this bound to the containing
+            object. The value that is returned from your method will be
+            serialized. If your method returns undefined, then the member will
+            be excluded from the serialization.
+
+            If the replacer parameter is an array of strings, then it will be
+            used to select the members to be serialized. It filters the results
+            such that only members with keys listed in the replacer array are
+            stringified.
+
+            Values that do not have JSON representations, such as undefined or
+            functions, will not be serialized. Such values in objects will be
+            dropped; in arrays they will be replaced with null. You can use
+            a replacer function to replace those with JSON values.
+            JSON.stringify(undefined) returns undefined.
+
+            The optional space parameter produces a stringification of the
+            value that is filled with line breaks and indentation to make it
+            easier to read.
+
+            If the space parameter is a non-empty string, then that string will
+            be used for indentation. If the space parameter is a number, then
+            the indentation will be that many spaces.
+
+            Example:
+
+            text = JSON.stringify(['e', {pluribus: 'unum'}]);
+            // text is '["e",{"pluribus":"unum"}]'
+
+
+            text = JSON.stringify(['e', {pluribus: 'unum'}], null, '\t');
+            // text is '[\n\t"e",\n\t{\n\t\t"pluribus": "unum"\n\t}\n]'
+
+            text = JSON.stringify([new Date()], function (key, value) {
+                return this[key] instanceof Date ?
+                    'Date(' + this[key] + ')' : value;
+            });
+            // text is '["Date(---current time---)"]'
+
+
+        JSON.parse(text, reviver)
+            This method parses a JSON text to produce an object or array.
+            It can throw a SyntaxError exception.
+
+            The optional reviver parameter is a function that can filter and
+            transform the results. It receives each of the keys and values,
+            and its return value is used instead of the original value.
+            If it returns what it received, then the structure is not modified.
+            If it returns undefined then the member is deleted.
+
+            Example:
+
+            // Parse the text. Values that look like ISO date strings will
+            // be converted to Date objects.
+
+            myData = JSON.parse(text, function (key, value) {
+                var a;
+                if (typeof value === 'string') {
+                    a =
+/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z$/.exec(value);
+                    if (a) {
+                        return new Date(Date.UTC(+a[1], +a[2] - 1, +a[3], +a[4],
+                            +a[5], +a[6]));
+                    }
+                }
+                return value;
+            });
+
+            myData = JSON.parse('["Date(09/09/2001)"]', function (key, value) {
+                var d;
+                if (typeof value === 'string' &&
+                        value.slice(0, 5) === 'Date(' &&
+                        value.slice(-1) === ')') {
+                    d = new Date(value.slice(5, -1));
+                    if (d) {
+                        return d;
+                    }
+                }
+                return value;
+            });
+
+
+    This is a reference implementation. You are free to copy, modify, or
+    redistribute.
+*/
+
+/*jslint evil: true, regexp: true */
+
+/*members "", "\b", "\t", "\n", "\f", "\r", "\"", JSON, "\\", apply,
+    call, charCodeAt, getUTCDate, getUTCFullYear, getUTCHours,
+    getUTCMinutes, getUTCMonth, getUTCSeconds, hasOwnProperty, join,
+    lastIndex, length, parse, prototype, push, replace, slice, stringify,
+    test, toJSON, toString, valueOf
+*/
+
+
+// Create a JSON object only if one does not already exist. We create the
+// methods in a closure to avoid creating global variables.
+
+if (typeof JSON !== 'object') {
+    JSON = {};
+}
+
+(function () {
+    'use strict';
+
+    function f(n) {
+        // Format integers to have at least two digits.
+        return n < 10 ? '0' + n : n;
+    }
+
+    if (typeof Date.prototype.toJSON !== 'function') {
+
+        Date.prototype.toJSON = function (key) {
+
+            return isFinite(this.valueOf())
+                ? this.getUTCFullYear()     + '-' +
+                    f(this.getUTCMonth() + 1) + '-' +
+                    f(this.getUTCDate())      + 'T' +
+                    f(this.getUTCHours())     + ':' +
+                    f(this.getUTCMinutes())   + ':' +
+                    f(this.getUTCSeconds())   + 'Z'
+                : null;
+        };
+
+        String.prototype.toJSON      =
+            Number.prototype.toJSON  =
+            Boolean.prototype.toJSON = function (key) {
+                return this.valueOf();
+            };
+    }
+
+    var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+        escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+        gap,
+        indent,
+        meta = {    // table of character substitutions
+            '\b': '\\b',
+            '\t': '\\t',
+            '\n': '\\n',
+            '\f': '\\f',
+            '\r': '\\r',
+            '"' : '\\"',
+            '\\': '\\\\'
+        },
+        rep;
+
+
+    function quote(string) {
+
+// If the string contains no control characters, no quote characters, and no
+// backslash characters, then we can safely slap some quotes around it.
+// Otherwise we must also replace the offending characters with safe escape
+// sequences.
+
+        escapable.lastIndex = 0;
+        return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
+            var c = meta[a];
+            return typeof c === 'string'
+                ? c
+                : '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+        }) + '"' : '"' + string + '"';
+    }
+
+
+    function str(key, holder) {
+
+// Produce a string from holder[key].
+
+        var i,          // The loop counter.
+            k,          // The member key.
+            v,          // The member value.
+            length,
+            mind = gap,
+            partial,
+            value = holder[key];
+
+// If the value has a toJSON method, call it to obtain a replacement value.
+
+        if (value && typeof value === 'object' &&
+                typeof value.toJSON === 'function') {
+            value = value.toJSON(key);
+        }
+
+// If we were called with a replacer function, then call the replacer to
+// obtain a replacement value.
+
+        if (typeof rep === 'function') {
+            value = rep.call(holder, key, value);
+        }
+
+// What happens next depends on the value's type.
+
+        switch (typeof value) {
+        case 'string':
+            return quote(value);
+
+        case 'number':
+
+// JSON numbers must be finite. Encode non-finite numbers as null.
+
+            return isFinite(value) ? String(value) : 'null';
+
+        case 'boolean':
+        case 'null':
+
+// If the value is a boolean or null, convert it to a string. Note:
+// typeof null does not produce 'null'. The case is included here in
+// the remote chance that this gets fixed someday.
+
+            return String(value);
+
+// If the type is 'object', we might be dealing with an object or an array or
+// null.
+
+        case 'object':
+
+// Due to a specification blunder in ECMAScript, typeof null is 'object',
+// so watch out for that case.
+
+            if (!value) {
+                return 'null';
+            }
+
+// Make an array to hold the partial results of stringifying this object value.
+
+            gap += indent;
+            partial = [];
+
+// Is the value an array?
+
+            if (Object.prototype.toString.apply(value) === '[object Array]') {
+
+// The value is an array. Stringify every element. Use null as a placeholder
+// for non-JSON values.
+
+                length = value.length;
+                for (i = 0; i < length; i += 1) {
+                    partial[i] = str(i, value) || 'null';
+                }
+
+// Join all of the elements together, separated with commas, and wrap them in
+// brackets.
+
+                v = partial.length === 0
+                    ? '[]'
+                    : gap
+                    ? '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']'
+                    : '[' + partial.join(',') + ']';
+                gap = mind;
+                return v;
+            }
+
+// If the replacer is an array, use it to select the members to be stringified.
+
+            if (rep && typeof rep === 'object') {
+                length = rep.length;
+                for (i = 0; i < length; i += 1) {
+                    if (typeof rep[i] === 'string') {
+                        k = rep[i];
+                        v = str(k, value);
+                        if (v) {
+                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
+                        }
+                    }
+                }
+            } else {
+
+// Otherwise, iterate through all of the keys in the object.
+
+                for (k in value) {
+                    if (Object.prototype.hasOwnProperty.call(value, k)) {
+                        v = str(k, value);
+                        if (v) {
+                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
+                        }
+                    }
+                }
+            }
+
+// Join all of the member texts together, separated with commas,
+// and wrap them in braces.
+
+            v = partial.length === 0
+                ? '{}'
+                : gap
+                ? '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}'
+                : '{' + partial.join(',') + '}';
+            gap = mind;
+            return v;
+        }
+    }
+
+// If the JSON object does not yet have a stringify method, give it one.
+
+    if (typeof JSON.stringify !== 'function') {
+        JSON.stringify = function (value, replacer, space) {
+
+// The stringify method takes a value and an optional replacer, and an optional
+// space parameter, and returns a JSON text. The replacer can be a function
+// that can replace values, or an array of strings that will select the keys.
+// A default replacer method can be provided. Use of the space parameter can
+// produce text that is more easily readable.
+
+            var i;
+            gap = '';
+            indent = '';
+
+// If the space parameter is a number, make an indent string containing that
+// many spaces.
+
+            if (typeof space === 'number') {
+                for (i = 0; i < space; i += 1) {
+                    indent += ' ';
+                }
+
+// If the space parameter is a string, it will be used as the indent string.
+
+            } else if (typeof space === 'string') {
+                indent = space;
+            }
+
+// If there is a replacer, it must be a function or an array.
+// Otherwise, throw an error.
+
+            rep = replacer;
+            if (replacer && typeof replacer !== 'function' &&
+                    (typeof replacer !== 'object' ||
+                    typeof replacer.length !== 'number')) {
+                throw new Error('JSON.stringify');
+            }
+
+// Make a fake root object containing our value under the key of ''.
+// Return the result of stringifying the value.
+
+            return str('', {'': value});
+        };
+    }
+
+
+// If the JSON object does not yet have a parse method, give it one.
+
+    if (typeof JSON.parse !== 'function') {
+        JSON.parse = function (text, reviver) {
+
+// The parse method takes a text and an optional reviver function, and returns
+// a JavaScript value if the text is a valid JSON text.
+
+            var j;
+
+            function walk(holder, key) {
+
+// The walk method is used to recursively walk the resulting structure so
+// that modifications can be made.
+
+                var k, v, value = holder[key];
+                if (value && typeof value === 'object') {
+                    for (k in value) {
+                        if (Object.prototype.hasOwnProperty.call(value, k)) {
+                            v = walk(value, k);
+                            if (v !== undefined) {
+                                value[k] = v;
+                            } else {
+                                delete value[k];
+                            }
+                        }
+                    }
+                }
+                return reviver.call(holder, key, value);
+            }
+
+
+// Parsing happens in four stages. In the first stage, we replace certain
+// Unicode characters with escape sequences. JavaScript handles many characters
+// incorrectly, either silently deleting them, or treating them as line endings.
+
+            text = String(text);
+            cx.lastIndex = 0;
+            if (cx.test(text)) {
+                text = text.replace(cx, function (a) {
+                    return '\\u' +
+                        ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+                });
+            }
+
+// In the second stage, we run the text against regular expressions that look
+// for non-JSON patterns. We are especially concerned with '()' and 'new'
+// because they can cause invocation, and '=' because it can cause mutation.
+// But just to be safe, we want to reject all unexpected forms.
+
+// We split the second stage into 4 regexp operations in order to work around
+// crippling inefficiencies in IE's and Safari's regexp engines. First we
+// replace the JSON backslash pairs with '@' (a non-JSON character). Second, we
+// replace all simple value tokens with ']' characters. Third, we delete all
+// open brackets that follow a colon or comma or that begin the text. Finally,
+// we look to see that the remaining characters are only whitespace or ']' or
+// ',' or ':' or '{' or '}'. If that is so, then the text is safe for eval.
+
+            if (/^[\],:{}\s]*$/
+                    .test(text.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g, '@')
+                        .replace(/"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g, ']')
+                        .replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
+
+// In the third stage we use the eval function to compile the text into a
+// JavaScript structure. The '{' operator is subject to a syntactic ambiguity
+// in JavaScript: it can begin a block or an object literal. We wrap the text
+// in parens to eliminate the ambiguity.
+
+                j = eval('(' + text + ')');
+
+// In the optional fourth stage, we recursively walk the new structure, passing
+// each name/value pair to a reviver function for possible transformation.
+
+                return typeof reviver === 'function'
+                    ? walk({'': j}, '')
+                    : j;
+            }
+
+// If the text is not JSON parseable, then a SyntaxError is thrown.
+
+            throw new SyntaxError('JSON.parse');
+        };
+    }
+}());
+
+</script>
+
+<style>
+
+body{
+  -webkit-text-size-adjust:none;
+  font-family:Helvetica, Arial, Verdana, sans-serif;
+  padding:1px;
+}
+
+input{
+	height:30px;
+}
+div{
+  clear:both!important;
+  display:block!important;
+  width:100%!important;
+  float:none!important;
+  margin:0!important;
+  padding:0!important;
+}
+
+table
+{
+	border-spacing:1px;	
+	width: 100%;
+}
+table.td
+{
+	padding:0px;	
+	border-width:0px;
+}
+
+img{
+  max-width:100%;
+  height:auto;
+}
+
+td{
+	text-align: center;
+	min-width: 15px;	
+}
+
+.botao_palpite
+{
+	text-align: center;
+	
+	height: 23px;
+	padding: 0px;
+	vertical-align: middle;
+	display: table-cell;
+	
+}
+
+.botao_tabela{
+	text-align: center;
+	min-width: 15px;
+	max-width: 15px;
+	height: 23px;
+	padding: 0px;	
+	vertical-align: middle;
+	display: table-cell;
+	
+}
+
+</style>
+
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width,minimum-scale=1.0, maximum-scale=1.0" />
+		<title>DETETIVE</title>
+	</head>
+	<body onload="telaInicial()">
+		<table border=1>
+			<tr>
+				<td>
+					<div id="menu">
+						<input type="button" value="aa" onclick="telaInicial()">
+					</div>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<div id="tela">
+					
+					</div>
+				</td>
+			</tr>
+		</table>
+	</body>
+</html>
